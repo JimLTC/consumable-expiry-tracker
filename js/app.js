@@ -50,7 +50,6 @@ function setupNav() {
 function setupScanIn() {
   document.getElementById('btn-scan-in-start').addEventListener('click', () => {
     startScanner('Scan In — point camera at barcode', (rawText, parsed) => {
-      if (!checkDuplicate(rawText)) return;
       fillScanInForm(parsed, rawText);
     });
   });
@@ -143,6 +142,8 @@ function setupScanOut() {
   document.getElementById('btn-so-cancel').addEventListener('click', () => {
     hide('scan-out-result');
     state.scanOutItem = null;
+    document.getElementById('btn-so-confirm').textContent = 'Confirm Use';
+    document.getElementById('btn-so-cancel').textContent  = 'Cancel';
   });
 
   document.getElementById('form-scan-out').addEventListener('submit', async (e) => {
@@ -188,10 +189,16 @@ async function lookupForScanOut(parsed, rawText) {
     return;
   }
 
-  const item     = result.item;
-  const daysLeft = daysDiff(today(), item.expiry);
+  const item = result.item;
   state.scanOutItem = item;
   show('form-scan-out');
+  renderScanOutCard(item);
+}
+
+/** Build (or rebuild) the status card from an item object. Called on first lookup and after each use. */
+function renderScanOutCard(item) {
+  const card     = document.getElementById('so-status-card');
+  const daysLeft = daysDiff(today(), item.expiry);
 
   if (item.qty <= 0) {
     card.className = 'card status-card status-no-stock';
@@ -235,8 +242,9 @@ async function lookupForScanOut(parsed, rawText) {
 }
 
 async function submitScanOut(qty) {
-  const item = state.scanOutItem;
-  const btn  = document.getElementById('btn-so-confirm');
+  const item        = state.scanOutItem;
+  const btn         = document.getElementById('btn-so-confirm');
+  const prevBtnText = btn.textContent;
   setLoading(btn, 'Processing...');
 
   const result = await api.post('scanOut', {
@@ -246,9 +254,8 @@ async function submitScanOut(qty) {
     qty
   });
 
-  resetButton(btn, 'Confirm Use');
-
   if (!result.success) {
+    resetButton(btn, prevBtnText);
     const msg = result.error === 'no_stock'
       ? 'No stock recorded — cannot go below 0'
       : 'Error: ' + result.error;
@@ -256,10 +263,23 @@ async function submitScanOut(qty) {
     return;
   }
 
-  const note = result.archived ? ' (batch archived — expired + empty)' : '';
-  showToast(`Done. Remaining qty: ${result.newQty}${note}`, 'success');
-  hide('scan-out-result');
-  state.scanOutItem = null;
+  const note = result.archived ? ' (archived — expired + empty)' : '';
+  showToast(`Used ${qty}. Remaining: ${result.newQty}${note}`, 'success');
+
+  if (result.archived || result.newQty <= 0) {
+    resetButton(btn, 'Confirm Use');
+    hide('scan-out-result');
+    state.scanOutItem = null;
+    return;
+  }
+
+  // Stock still available — update the card and offer to use the same item again
+  // without needing to re-scan
+  state.scanOutItem = { ...item, qty: result.newQty };
+  renderScanOutCard(state.scanOutItem);
+  document.getElementById('so-qty').value = '1';
+  resetButton(btn, 'Use Same Item Again');
+  document.getElementById('btn-so-cancel').textContent = 'Done';
 }
 
 // =====================================================================
@@ -546,7 +566,7 @@ function updateApiDisplay() {
  */
 function checkDuplicate(text) {
   const now = Date.now();
-  if (text === state.lastScan.text && now - state.lastScan.time < 30000) {
+  if (text === state.lastScan.text && now - state.lastScan.time < 3000) {
     if (!confirm('You just scanned this item — scan again?')) return false;
   }
   state.lastScan = { text, time: now };

@@ -31,7 +31,8 @@ const C = {
   NAME:         4,  // E: Item Name
   DATE_LOGGED:  5,  // F: Date First Logged
   LAST_UPDATED: 6,  // G: Last Updated
-  ACTION_BY:    7   // H: Last Action By
+  ACTION_BY:    7,  // H: Last Action By
+  MIN_QTY:      8   // I: Min Qty (per-item low-stock alert threshold)
 };
 
 // Archive-only extra columns
@@ -84,6 +85,8 @@ function doPost(e) {
       result = scanOut(params);
     } else if (action === 'reconcile') {
       result = reconcile(params);
+    } else if (action === 'setMinQty') {
+      result = setMinQty(params);
     } else {
       result = { success: false, error: 'Unknown action: ' + action };
     }
@@ -136,6 +139,7 @@ function scanIn(params) {
   const qty      = Number(params.qty)     || 1;
   const itemName = String(params.itemName || '').trim();
   const actionBy = String(params.actionBy || '').trim();
+  const minQty   = params.minQty !== undefined ? Number(params.minQty) : null;
 
   if (!gtin) return { success: false, error: 'GTIN is required' };
   if (qty < 1) return { success: false, error: 'Quantity must be at least 1' };
@@ -158,7 +162,8 @@ function scanIn(params) {
       return { success: true, action: 'updated', newQty: newQty };
     } else {
       // New batch — append row
-      sheet.appendRow([gtin, lot, expiry, qty, itemName, now, now, actionBy]);
+      const minQtyVal = (minQty !== null && minQty >= 0) ? minQty : '';
+      sheet.appendRow([gtin, lot, expiry, qty, itemName, now, now, actionBy, minQtyVal]);
       return { success: true, action: 'created', newQty: qty };
     }
   } finally {
@@ -263,6 +268,30 @@ function reconcile(params) {
   }
 }
 
+/** Update the per-item low-stock alert threshold (column I). */
+function setMinQty(params) {
+  const gtin   = String(params.gtin   || '').trim();
+  const lot    = String(params.lot    || '').trim();
+  const expiry = String(params.expiry || '').trim();
+  const minQty = Number(params.minQty);
+
+  if (!gtin)        return { success: false, error: 'GTIN is required' };
+  if (isNaN(minQty) || minQty < 0) return { success: false, error: 'minQty must be 0 or higher' };
+
+  const lock = LockService.getSpreadsheetLock();
+  if (!lock.tryLock(10000)) return { success: false, error: 'Server busy — please try again' };
+
+  try {
+    const sheet  = getSheet(ACTIVE_SHEET);
+    const rowNum = findBatchRow(sheet, gtin, lot, expiry);
+    if (rowNum === -1) return { success: false, error: 'Batch not found' };
+    sheet.getRange(rowNum, C.MIN_QTY + 1).setValue(minQty);
+    return { success: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /**
  * Move any Active Inventory row with qty=0 AND an expired date to the Archive sheet.
  * Designed to run daily via a time-based trigger (see setupDailyTrigger below).
@@ -357,7 +386,8 @@ function rowToItem(row) {
     name:        String(row[C.NAME]).trim(),
     dateLogged:  normalizeDateTime(row[C.DATE_LOGGED]),
     lastUpdated: normalizeDateTime(row[C.LAST_UPDATED]),
-    actionBy:    String(row[C.ACTION_BY]).trim()
+    actionBy:    String(row[C.ACTION_BY]).trim(),
+    minQty:      Number(row[C.MIN_QTY]) || 0
   };
 }
 

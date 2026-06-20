@@ -64,6 +64,8 @@ function setupScanIn() {
     const expiry = v('si-expiry');
     const name   = v('si-name');
     const qty    = parseInt(document.getElementById('si-qty').value, 10);
+    const minQty = document.getElementById('si-minqty').value.trim();
+    const minQtyVal = minQty !== '' ? parseInt(minQty, 10) : null;
 
     if (!gtin) { showToast('GTIN / Ref is required', 'error'); return; }
     if (isNaN(qty) || qty < 1) { showToast('Quantity must be at least 1', 'error'); return; }
@@ -74,7 +76,7 @@ function setupScanIn() {
       warn.classList.remove('hidden');
       document.getElementById('btn-si-override-yes').onclick = () => {
         warn.classList.add('hidden');
-        submitScanIn(gtin, lot, expiry, qty, name);
+        submitScanIn(gtin, lot, expiry, qty, name, minQtyVal);
       };
       document.getElementById('btn-si-override-no').onclick = () => {
         warn.classList.add('hidden');
@@ -82,7 +84,7 @@ function setupScanIn() {
       return;
     }
 
-    await submitScanIn(gtin, lot, expiry, qty, name);
+    await submitScanIn(gtin, lot, expiry, qty, name, minQtyVal);
   });
 }
 
@@ -97,18 +99,20 @@ function fillScanInForm(parsed, rawText) {
 }
 
 function clearScanInForm() {
-  ['si-gtin', 'si-lot', 'si-expiry', 'si-name'].forEach(id => {
+  ['si-gtin', 'si-lot', 'si-expiry', 'si-name', 'si-minqty'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('si-qty').value = '1';
   document.getElementById('si-expiry-warning').classList.add('hidden');
 }
 
-async function submitScanIn(gtin, lot, expiry, qty, itemName) {
+async function submitScanIn(gtin, lot, expiry, qty, itemName, minQty = null) {
   const btn = document.getElementById('btn-si-submit');
   setLoading(btn, 'Logging...');
 
-  const result = await api.post('scanIn', { gtin, lot, expiry, qty, itemName });
+  const payload = { gtin, lot, expiry, qty, itemName };
+  if (minQty !== null && !isNaN(minQty)) payload.minQty = minQty;
+  const result = await api.post('scanIn', payload);
 
   resetButton(btn, 'Log Stock In');
 
@@ -314,24 +318,30 @@ async function loadDashboard() {
       <span class="count">${items.length}</span>Total
     </div>`;
 
-  const rows = items.map(item => {
+  const rows = items.map((item, idx) => {
+    // Per-item threshold takes priority; fall back to global default
+    const threshold = item.minQty > 0 ? item.minQty : lowQty;
     const expired  = item.expiry && item.expiry < todayStr;
     const expiring = !expired && item.expiry && daysDiff(todayStr, item.expiry) <= wDays;
-    const low      = item.qty > 0 && item.qty <= lowQty;
+    const low      = item.qty > 0 && item.qty <= threshold;
     const rowClass = expired ? 'row-expired' : expiring ? 'row-expiring' : '';
 
-    const tags = [
+    const expiryTags = [
       expired  ? '<span class="badge-expired">EXPIRED</span>'   : '',
-      expiring ? '<span class="badge-expiring">EXPIRING</span>' : '',
-      low      ? '<span class="badge-low">LOW</span>'           : ''
+      expiring ? '<span class="badge-expiring">EXPIRING</span>' : ''
     ].join('');
 
-    return `<tr class="${rowClass}">
+    return `<tr class="${rowClass}" data-idx="${idx}">
       <td>${esc(item.name || '&mdash;')}</td>
       <td>${esc(item.gtin)}</td>
       <td>${esc(item.lot || '&mdash;')}</td>
       <td class="${low ? 'cell-low' : ''}">${item.qty}${low ? ' <span class="badge-low">LOW</span>' : ''}</td>
-      <td>${esc(item.expiry || '&mdash;')}${expired || expiring ? ' ' + tags : ''}</td>
+      <td>${esc(item.expiry || '&mdash;')}${expired || expiring ? ' ' + expiryTags : ''}</td>
+      <td>
+        <input type="number" class="minqty-input" data-idx="${idx}"
+               value="${item.minQty > 0 ? item.minQty : ''}"
+               placeholder="${lowQty}" min="0" title="Alert when qty falls to this number (blank = global default of ${lowQty})">
+      </td>
     </tr>`;
   }).join('');
 
@@ -345,11 +355,31 @@ async function loadDashboard() {
             <th>Lot</th>
             <th>Qty</th>
             <th>Expiry</th>
+            <th title="Alert threshold for this item. Blank = use global default.">Min&nbsp;Qty&nbsp;&#9432;</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
-    </div>`;
+    </div>
+    <p class="small" style="margin-top:8px">Min Qty: set per item, or leave blank to use the global default (${lowQty}). Changes save automatically.</p>`;
+
+  // Save min qty when user finishes editing a cell (on blur or Enter)
+  content.querySelectorAll('.minqty-input').forEach(input => {
+    const save = async () => {
+      const idx  = parseInt(input.dataset.idx, 10);
+      const item = items[idx];
+      const val  = input.value.trim();
+      const minQty = val === '' ? 0 : parseInt(val, 10);
+      if (isNaN(minQty) || minQty < 0) { showToast('Min qty must be 0 or higher', 'error'); return; }
+      const result = await api.post('setMinQty', {
+        gtin: item.gtin, lot: item.lot, expiry: item.expiry, minQty
+      });
+      if (result.success) showToast('Min qty saved', 'success');
+      else showToast('Error: ' + result.error, 'error');
+    };
+    input.addEventListener('blur', save);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
+  });
 }
 
 // =====================================================================

@@ -51,6 +51,10 @@
           <label for="si-qty">Quantity *</label>
           <input type="number" id="si-qty" value="1" min="1" max="9999" inputmode="numeric">
         </div>
+        <div class="field">
+          <label for="si-minqty">Low-stock alert when qty falls to (optional)</label>
+          <input type="number" id="si-minqty" placeholder="e.g. 3 — leave blank to use global default" min="0" inputmode="numeric">
+        </div>
 
         <!-- Shown only when expiry date is already in the past -->
         <div id="si-expiry-warning" class="warning hidden">

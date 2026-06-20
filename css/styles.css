@@ -503,6 +503,21 @@ main {
 .small            { font-size: .82rem; color: var(--text-muted); }
 .no-items         { text-align: center; color: var(--text-muted); padding: 36px 0; font-size: .95rem; }
 
+/* Inline min-qty editor in dashboard table */
+.minqty-input {
+  width: 58px;
+  padding: 4px 6px;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  font-size: .88rem;
+  text-align: center;
+  -webkit-appearance: none;
+}
+.minqty-input:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
 code {
   background: #f1f3f4;
   padding: 2px 6px;

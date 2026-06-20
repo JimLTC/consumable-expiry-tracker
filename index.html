@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Consumables Tracker</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <!-- html5-qrcode: handles camera access and barcode/QR/DataMatrix decoding -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+
+  <header>
+    <h1>Consumables Tracker</h1>
+    <span id="connection-status"></span>
+  </header>
+
+  <main>
+
+    <!-- ================================================================
+         TAB: SCAN IN
+         Log new stock into the system. Barcode auto-fills fields where
+         possible; user confirms and submits.
+         ================================================================ -->
+    <section id="tab-scan-in" class="tab active">
+      <h2>Scan In</h2>
+      <p class="helper-text">Scan a barcode to log new stock arriving.</p>
+
+      <button id="btn-scan-in-start" class="btn-primary btn-scan">&#128247; Scan Barcode</button>
+
+      <form id="form-scan-in" class="card">
+        <div class="field">
+          <label for="si-gtin">GTIN / Ref *</label>
+          <input type="text" id="si-gtin" placeholder="Product ID (filled by scanner)" autocomplete="off" inputmode="text">
+        </div>
+        <div class="field">
+          <label for="si-lot">Lot / Batch</label>
+          <input type="text" id="si-lot" placeholder="Leave blank if not on label" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="si-expiry">Expiry Date</label>
+          <input type="date" id="si-expiry">
+        </div>
+        <div class="field">
+          <label for="si-name">Item Name</label>
+          <input type="text" id="si-name" placeholder="e.g. Drill Bit 5mm, Cortical Screw 3.5x20" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="si-qty">Quantity *</label>
+          <input type="number" id="si-qty" value="1" min="1" max="9999" inputmode="numeric">
+        </div>
+
+        <!-- Shown only when expiry date is already in the past -->
+        <div id="si-expiry-warning" class="warning hidden">
+          &#9888; This expiry date is already in the past. Are you sure you want to log it?
+          <div class="button-row">
+            <button type="button" id="btn-si-override-yes" class="btn-warning">Yes, log it</button>
+            <button type="button" id="btn-si-override-no"  class="btn-secondary">Cancel</button>
+          </div>
+        </div>
+
+        <button type="submit" id="btn-si-submit" class="btn-primary">Log Stock In</button>
+        <button type="button" id="btn-si-clear"  class="btn-secondary">Clear Form</button>
+      </form>
+    </section>
+
+    <!-- ================================================================
+         TAB: SCAN OUT
+         Check an item before use. Shows expiry status, then decrements.
+         ================================================================ -->
+    <section id="tab-scan-out" class="tab">
+      <h2>Scan Out</h2>
+      <p class="helper-text">Scan an item before using it. Shows expiry status.</p>
+
+      <button id="btn-scan-out-start" class="btn-primary btn-scan">&#128247; Scan Item</button>
+
+      <div id="scan-out-result" class="hidden">
+        <!-- Status card: OK / EXPIRING SOON / EXPIRED / NOT FOUND / NO STOCK -->
+        <div id="so-status-card" class="card status-card"></div>
+
+        <form id="form-scan-out" class="card hidden">
+          <div class="field">
+            <label for="so-qty">Quantity to remove</label>
+            <input type="number" id="so-qty" value="1" min="1" inputmode="numeric">
+          </div>
+          <button type="submit" id="btn-so-confirm" class="btn-primary">Confirm Use</button>
+          <button type="button" id="btn-so-cancel"  class="btn-secondary">Cancel</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ================================================================
+         TAB: DASHBOARD
+         All active inventory sorted by soonest expiry, colour-coded.
+         ================================================================ -->
+    <section id="tab-dashboard" class="tab">
+      <h2>Dashboard</h2>
+      <button id="btn-refresh-dashboard" class="btn-secondary">&#8635; Refresh</button>
+      <div id="dashboard-summary" class="summary-row hidden"></div>
+      <div id="dashboard-content"></div>
+    </section>
+
+    <!-- ================================================================
+         TAB: RECONCILE
+         Manual stock count — logs discrepancies with a required reason.
+         ================================================================ -->
+    <section id="tab-reconcile" class="tab">
+      <h2>Reconciliation</h2>
+      <p class="helper-text">
+        Enter physical counts below. Any discrepancy requires a written reason
+        before the system quantity is updated.
+      </p>
+      <button id="btn-load-reconcile" class="btn-secondary">Load Inventory</button>
+      <div id="reconcile-list" style="margin-top:14px"></div>
+      <div id="reconcile-submit-area" class="hidden" style="margin-top:4px">
+        <button id="btn-submit-reconcile" class="btn-primary">Submit Adjustments</button>
+      </div>
+    </section>
+
+    <!-- ================================================================
+         TAB: SETTINGS
+         Expiry warning window and low-stock threshold (saved locally).
+         ================================================================ -->
+    <section id="tab-settings" class="tab">
+      <h2>Settings</h2>
+
+      <div class="card">
+        <div class="field">
+          <label for="set-expiry-days">Warn me this many days before expiry</label>
+          <input type="number" id="set-expiry-days" value="14" min="1" max="365" inputmode="numeric">
+        </div>
+        <div class="field">
+          <label for="set-low-stock">Low-stock alert when quantity is at or below</label>
+          <input type="number" id="set-low-stock" value="2" min="0" max="999" inputmode="numeric">
+        </div>
+        <button id="btn-save-settings" class="btn-primary">Save Settings</button>
+        <p class="small" style="margin-top:10px">Settings are stored on this device only.</p>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <p class="small"><strong>API endpoint:</strong></p>
+        <p class="small" style="margin-top:4px"><code id="api-url-display"></code></p>
+        <p class="small" style="margin-top:8px">
+          To update: edit <code>js/config.js</code>, then push to GitHub.
+        </p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ================================================================
+       BOTTOM NAVIGATION BAR
+       ================================================================ -->
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-tab="scan-in">
+      <span class="nav-icon">&#11014;</span>
+      <span>In</span>
+    </button>
+    <button class="nav-btn" data-tab="scan-out">
+      <span class="nav-icon">&#11015;</span>
+      <span>Out</span>
+    </button>
+    <button class="nav-btn" data-tab="dashboard">
+      <span class="nav-icon">&#128203;</span>
+      <span>Dashboard</span>
+    </button>
+    <button class="nav-btn" data-tab="reconcile">
+      <span class="nav-icon">&#9989;</span>
+      <span>Reconcile</span>
+    </button>
+    <button class="nav-btn" data-tab="settings">
+      <span class="nav-icon">&#9881;</span>
+      <span>Settings</span>
+    </button>
+  </nav>
+
+  <!-- ================================================================
+       SCANNER OVERLAY (shown when camera is active)
+       ================================================================ -->
+  <div id="scanner-overlay" class="hidden">
+    <div class="scanner-header">
+      <h3 id="scanner-title">Scanning&hellip;</h3>
+      <button id="btn-stop-scan" class="btn-secondary">Cancel</button>
+    </div>
+    <div id="reader"></div>
+    <p class="scanner-hint">Hold the barcode steady in front of the camera</p>
+  </div>
+
+  <!-- ================================================================
+       TOAST NOTIFICATION
+       ================================================================ -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- Scripts — load config first so API_URL is defined before api.js runs -->
+  <script src="js/config.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/scanner.js"></script>
+  <script src="js/app.js"></script>
+
+</body>
+</html>

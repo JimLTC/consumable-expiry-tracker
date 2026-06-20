@@ -13,10 +13,26 @@ function startScanner(title, onResult) {
   document.getElementById('scanner-title').textContent = title;
   document.getElementById('scanner-overlay').classList.remove('hidden');
 
-  _scanner = new Html5Qrcode('reader');
+  // Explicitly list every format we want — without this, html5-qrcode
+  // defaults to QR Code only and ignores 1D barcodes entirely.
+  const F = Html5QrcodeSupportedFormats;
+  _scanner = new Html5Qrcode('reader', {
+    formatsToSupport: [
+      F.EAN_13,      // standard product barcode (most OTC medicine / consumer goods)
+      F.EAN_8,       // short EAN barcode
+      F.UPC_A,       // US product barcode
+      F.UPC_E,       // compressed UPC
+      F.CODE_128,    // GS1-128 used on medical packaging
+      F.CODE_39,     // older medical/lab barcodes
+      F.DATA_MATRIX, // GS1 DataMatrix (implants, surgical items)
+      F.QR_CODE      // general QR codes
+    ]
+  });
   _scanner.start(
-    { facingMode: 'environment' },           // prefer rear camera
-    { fps: 10, qrbox: { width: 260, height: 180 }, aspectRatio: 1.6 },
+    { facingMode: 'environment' },  // prefer rear camera
+    // Wide, short box: suits 1D strip barcodes (EAN/UPC/Code128) AND
+    // 2D DataMatrix. aspectRatio removed — it breaks camera on iOS/WebKit.
+    { fps: 15, qrbox: { width: 280, height: 110 } },
     (decoded) => {
       stopScanner();
       onResult(decoded, parseBarcode(decoded));

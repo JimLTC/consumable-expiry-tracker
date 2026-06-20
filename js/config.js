@@ -10,4 +10,4 @@
 // 4. Click Deploy → copy the URL shown
 // 5. Replace the placeholder below with that URL, then commit & push
 // =====================================================================
-const API_URL = 'YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+const API_URL = 'https://script.google.com/macros/s/AKfycbzBlMg_cFE-p6qwnvrtGpkDE-ZGNtHP6SHPlWUH4p-NXf6WcQwzxSzEzA07WdBl7KUo/exec';

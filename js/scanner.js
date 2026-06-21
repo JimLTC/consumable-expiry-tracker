@@ -3,6 +3,7 @@
 // =====================================================================
 
 let _scanner = null;
+let _lastScanErrorLog = 0;  // throttle per-frame error logs (ms timestamp)
 
 /**
  * Open the camera overlay and start scanning.
@@ -25,19 +26,39 @@ function startScanner(title, onResult) {
       F.CODE_128,    // GS1-128 used on medical packaging
       F.CODE_39,     // older medical/lab barcodes
       F.DATA_MATRIX, // GS1 DataMatrix (implants, surgical items)
-      F.QR_CODE      // general QR codes
+      F.QR_CODE,     // general QR codes
+      F.CODABAR,     // Codabar (blood bank, libraries)
+      F.ITF          // Interleaved 2-of-5 (cartons, logistics)
     ]
   });
+
+  // Log available cameras to aid debugging
+  Html5Qrcode.getCameraDevices().then((devices) => {
+    console.log('[scanner] cameras:', devices.map(d => d.label));
+  });
+
+  const videoConstraints = { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } };
+  const qrboxFn = (vw, vh) => ({
+    width:  Math.min(Math.round(vw * 0.90), 600),   // 90% of viewfinder, max 600px
+    height: Math.min(Math.round(vh * 0.38), 220)    // 38% of viewfinder, max 220px
+  });
+  console.log('[scanner] start — constraints:', videoConstraints, '| qrbox: fn(vw,vh)→90%/600 × 38%/220');
   _scanner.start(
-    { facingMode: 'environment' },  // prefer rear camera
-    // Wide, short box: suits 1D strip barcodes (EAN/UPC/Code128) AND
-    // 2D DataMatrix. aspectRatio removed — it breaks camera on iOS/WebKit.
-    { fps: 15, qrbox: { width: 280, height: 110 } },
+    videoConstraints,
+    // Wide, short box fn: 90% wide / 38% tall, capped at 600×220px
+    { fps: 15, qrbox: qrboxFn },
     (decoded) => {
+      console.log('[scanner] decoded:', decoded);
       stopScanner();
       onResult(decoded, parseBarcode(decoded));
     },
-    () => {}  // per-frame errors are normal (camera still finding the barcode) — ignore
+    (err) => {  // per-frame errors: log throttled to once per 3s
+      const now = Date.now();
+      if (now - _lastScanErrorLog > 3000) {
+        console.log('[scanner] frame error:', err);
+        _lastScanErrorLog = now;
+      }
+    }
   ).catch((err) => {
     stopScanner();
     showToast('Camera error: ' + err, 'error');

@@ -6,6 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Consumables Tracker</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css">
   <!-- html5-qrcode: handles camera access and barcode/QR/DataMatrix decoding -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
@@ -13,7 +14,10 @@
 <body>
 
   <header>
-    <h1>Consumables Tracker</h1>
+    <div class="header-logo">
+      <span class="header-dot"></span>
+      <h1>Consumables Tracker</h1>
+    </div>
     <span id="connection-status"></span>
   </header>
 

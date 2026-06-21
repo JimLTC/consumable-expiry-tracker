@@ -183,6 +183,12 @@ main {
 .btn-scan {
   font-size: 1.05rem;
   margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 15px 16px;
+  box-shadow: 0 0 0 3px rgba(26,110,181,.18);
 }
 
 .button-row {
@@ -258,6 +264,7 @@ main {
 }
 
 .nav-btn {
+  position: relative;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -283,56 +290,87 @@ main {
 .nav-btn.active {
   color: var(--primary);
 }
+.nav-btn.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 16%;
+  right: 16%;
+  height: 3px;
+  background: var(--primary);
+  border-radius: 0 0 3px 3px;
+}
 
 /* =====================================================================
-   SCANNER OVERLAY
+   SCANNER OVERLAY (processing card — shown while decoding photo)
    ===================================================================== */
 
 #scanner-overlay {
   position: fixed;
   inset: 0;
-  background: #000;
+  background: rgba(0,0,0,.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   z-index: 500;
   display: flex;
-  flex-direction: column;
-  padding: 12px 16px 20px;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
 }
 #scanner-overlay.hidden {
   display: none;
 }
 
-.scanner-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 6px 0 12px;
+.scanner-card {
+  background: #fff;
+  border-radius: 20px;
+  padding: 36px 28px 28px;
+  text-align: center;
+  width: 100%;
+  max-width: 300px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.35);
 }
-.scanner-header h3 {
-  color: #fff;
-  font-size: .95rem;
-  font-weight: 600;
+.scanner-card h3 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
 }
-.scanner-header .btn-secondary {
+.scanner-card .scanner-hint {
+  color: var(--text-muted);
+  font-size: .87rem;
+  margin-bottom: 22px;
+}
+.scanner-card .btn-secondary {
   width: auto;
-  padding: 7px 18px;
-  font-size: .88rem;
+  padding: 9px 26px;
+  font-size: .9rem;
   margin-top: 0;
 }
 
-#reader {
-  flex: 1;
-  border-radius: 12px;
-  overflow: hidden;
-  background: #111;
+.scanner-spinner {
+  width: 52px;
+  height: 52px;
+  border: 4px solid #e8eaf6;
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin .75s linear infinite;
+  margin: 0 auto 22px;
 }
-/* Override html5-qrcode default styles */
-#reader video { object-fit: cover; border-radius: 12px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* #reader is kept in DOM for html5-qrcode but never shown */
+#reader {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
 
 .scanner-hint {
-  color: rgba(255,255,255,.65);
-  font-size: .82rem;
-  text-align: center;
-  padding: 12px 0 4px;
+  color: var(--text-muted);
+  font-size: .87rem;
 }
 
 /* =====================================================================
@@ -440,6 +478,66 @@ main {
 .badge-expired  { background: var(--danger);  color: #fff; }
 .badge-expiring { background: var(--warning); color: #fff; }
 .badge-low      { background: var(--warning); color: #fff; }
+
+/* =====================================================================
+   INVENTORY CARDS (dashboard)
+   ===================================================================== */
+
+.inv-card {
+  background: var(--card-bg);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border);
+  padding: 14px 14px 12px;
+  margin-top: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.inv-card-expired  { border-left-color: var(--danger);  background: var(--danger-bg); border-color: #ef9a9a; }
+.inv-card-expiring { border-left-color: var(--warning); background: var(--warn-bg);   border-color: #ffcc80; }
+.inv-card-ok       { border-left-color: var(--success); }
+
+.inv-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.inv-card-name {
+  font-size: .97rem;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+.inv-card-expiry {
+  font-size: .84rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.inv-card-expired  .inv-card-expiry { color: var(--danger);  }
+.inv-card-expiring .inv-card-expiry { color: var(--warning); }
+.inv-card-ok       .inv-card-expiry { color: var(--text-muted); }
+
+.inv-card-meta {
+  font-size: .8rem;
+  color: var(--text-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+  align-items: center;
+}
+.inv-card-qty-low { color: var(--warning); font-weight: 700; }
+
+.inv-card-minqty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: .78rem;
+  color: var(--text-muted);
+}
 
 /* =====================================================================
    RECONCILIATION

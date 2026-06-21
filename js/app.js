@@ -214,29 +214,28 @@ function renderScanOutCard(item) {
   document.getElementById('btn-so-confirm').disabled = false;
   document.getElementById('so-qty').max = item.qty;
 
+  const expiryLabel = formatExpiry(item.expiry);
+
   if (item.expiry && item.expiry < today()) {
     card.className = 'card status-card status-expired';
     card.innerHTML = `
       <div class="status-badge">EXPIRED</div>
       <div><strong>${esc(item.name || item.gtin)}</strong></div>
-      <div class="status-detail">${Math.abs(daysLeft)} days overdue &middot; Expiry: ${esc(item.expiry)}</div>
+      <div class="status-detail">${esc(expiryLabel)}</div>
       <div class="status-detail">Lot: ${esc(item.lot || '&mdash;')} &middot; Qty in stock: ${item.qty}</div>`;
   } else if (item.expiry && daysLeft <= state.settings.expiryWarningDays) {
     card.className = 'card status-card status-expiring';
     card.innerHTML = `
       <div class="status-badge">EXPIRING SOON</div>
       <div><strong>${esc(item.name || item.gtin)}</strong></div>
-      <div class="status-detail">${daysLeft} day${daysLeft === 1 ? '' : 's'} remaining &middot; Expiry: ${esc(item.expiry)}</div>
+      <div class="status-detail">${esc(expiryLabel)}</div>
       <div class="status-detail">Lot: ${esc(item.lot || '&mdash;')} &middot; Qty in stock: ${item.qty}</div>`;
   } else {
     card.className = 'card status-card status-ok';
-    const expiryLine = item.expiry
-      ? `${daysLeft} day${daysLeft === 1 ? '' : 's'} remaining &middot; Expiry: ${esc(item.expiry)}`
-      : 'No expiry date recorded';
     card.innerHTML = `
       <div class="status-badge">OK</div>
       <div><strong>${esc(item.name || item.gtin)}</strong></div>
-      <div class="status-detail">${expiryLine}</div>
+      <div class="status-detail">${expiryLabel ? esc(expiryLabel) : 'No expiry date recorded'}</div>
       <div class="status-detail">Lot: ${esc(item.lot || '&mdash;')} &middot; Qty in stock: ${item.qty}</div>`;
   }
 }
@@ -338,50 +337,38 @@ async function loadDashboard() {
       <span class="count">${items.length}</span>Total
     </div>`;
 
-  const rows = items.map((item, idx) => {
-    // Per-item threshold takes priority; fall back to global default
+  const cards = items.map((item, idx) => {
     const threshold = item.minQty > 0 ? item.minQty : lowQty;
     const expired  = item.expiry && item.expiry < todayStr;
     const expiring = !expired && item.expiry && daysDiff(todayStr, item.expiry) <= wDays;
     const low      = item.qty > 0 && item.qty <= threshold;
-    const rowClass = expired ? 'row-expired' : expiring ? 'row-expiring' : '';
+    const cardClass = expired ? 'inv-card-expired' : expiring ? 'inv-card-expiring' : 'inv-card-ok';
+    const expiryLabel = formatExpiry(item.expiry) || 'No expiry date';
+    const badgeHtml = expired
+      ? '<span class="badge-expired">EXPIRED</span>'
+      : expiring ? '<span class="badge-expiring">SOON</span>' : '';
 
-    const expiryTags = [
-      expired  ? '<span class="badge-expired">EXPIRED</span>'   : '',
-      expiring ? '<span class="badge-expiring">EXPIRING</span>' : ''
-    ].join('');
-
-    return `<tr class="${rowClass}" data-idx="${idx}">
-      <td>${esc(item.name || '&mdash;')}</td>
-      <td>${esc(item.gtin)}</td>
-      <td>${esc(item.lot || '&mdash;')}</td>
-      <td class="${low ? 'cell-low' : ''}">${item.qty}${low ? ' <span class="badge-low">LOW</span>' : ''}</td>
-      <td>${esc(item.expiry || '&mdash;')}${expired || expiring ? ' ' + expiryTags : ''}</td>
-      <td>
-        <input type="number" class="minqty-input" data-idx="${idx}"
+    return `<div class="inv-card ${cardClass}" data-idx="${idx}">
+      <div class="inv-card-header">
+        <span class="inv-card-name">${esc(item.name || item.gtin)}</span>
+        ${badgeHtml}
+      </div>
+      <div class="inv-card-expiry">${esc(expiryLabel)}</div>
+      <div class="inv-card-meta">
+        <span>Qty: <strong class="${low ? 'inv-card-qty-low' : ''}">${item.qty}${low ? ' LOW' : ''}</strong></span>
+        ${item.lot    ? '<span>Lot: ' + esc(item.lot) + '</span>' : ''}
+        ${item.gtin && item.name ? '<span>GTIN: ' + esc(item.gtin) + '</span>' : ''}
+      </div>
+      <div class="inv-card-minqty">
+        <label for="mq-${idx}" style="white-space:nowrap">Min qty alert:</label>
+        <input type="number" id="mq-${idx}" class="minqty-input" data-idx="${idx}"
                value="${item.minQty > 0 ? item.minQty : ''}"
                placeholder="${lowQty}" min="0" title="Alert when qty falls to this number (blank = global default of ${lowQty})">
-      </td>
-    </tr>`;
+      </div>
+    </div>`;
   }).join('');
 
-  content.innerHTML = `
-    <div style="overflow-x:auto;margin-top:12px">
-      <table class="inventory-table">
-        <thead>
-          <tr>
-            <th>Item Name</th>
-            <th>GTIN / Ref</th>
-            <th>Lot</th>
-            <th>Qty</th>
-            <th>Expiry</th>
-            <th title="Alert threshold for this item. Blank = use global default.">Min&nbsp;Qty&nbsp;&#9432;</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-    <p class="small" style="margin-top:8px">Min Qty: set per item, or leave blank to use the global default (${lowQty}). Changes save automatically.</p>`;
+  content.innerHTML = cards + `<p class="small" style="margin-top:12px">Min Qty: set per item, or leave blank to use the global default (${lowQty}). Changes save automatically.</p>`;
 
   // Save min qty when user finishes editing a cell (on blur or Enter)
   content.querySelectorAll('.minqty-input').forEach(input => {
@@ -590,6 +577,16 @@ function today() {
 function daysDiff(dateA, dateB) {
   if (!dateB) return Infinity;
   return Math.round((new Date(dateB) - new Date(dateA)) / 86400000);
+}
+function formatExpiry(isoDate) {
+  if (!isoDate) return null;
+  const days = daysDiff(today(), isoDate);
+  if (days < 0)   return `Expired ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ago`;
+  if (days === 0) return 'Expires today';
+  if (days === 1) return 'Expires tomorrow';
+  if (days <= 30) return `Expires in ${days} days`;
+  const d = new Date(isoDate + 'T00:00:00');
+  return 'Expires ' + d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 // Prevent XSS when inserting dynamic content into innerHTML

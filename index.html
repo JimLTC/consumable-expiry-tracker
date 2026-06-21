@@ -28,7 +28,10 @@
       <h2>Scan In</h2>
       <p class="helper-text">Scan a barcode to log new stock arriving.</p>
 
-      <button id="btn-scan-in-start" class="btn-primary btn-scan">&#128247; Scan Barcode</button>
+      <button id="btn-scan-in-start" class="btn-primary btn-scan">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Scan Barcode
+      </button>
 
       <form id="form-scan-in" class="card">
         <div class="field">
@@ -78,7 +81,10 @@
       <h2>Scan Out</h2>
       <p class="helper-text">Scan an item before using it. Shows expiry status.</p>
 
-      <button id="btn-scan-out-start" class="btn-primary btn-scan">&#128247; Scan Item</button>
+      <button id="btn-scan-out-start" class="btn-primary btn-scan">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+        Scan Item
+      </button>
 
       <div id="scan-out-result" class="hidden">
         <!-- Status card: OK / EXPIRING SOON / EXPIRED / NOT FOUND / NO STOCK -->
@@ -184,12 +190,13 @@
        SCANNER OVERLAY (shown when camera is active)
        ================================================================ -->
   <div id="scanner-overlay" class="hidden">
-    <div class="scanner-header">
-      <h3 id="scanner-title">Scanning&hellip;</h3>
+    <div class="scanner-card">
+      <div class="scanner-spinner"></div>
+      <h3 id="scanner-title">Processing&hellip;</h3>
+      <p class="scanner-hint">Reading barcode from photo</p>
       <button id="btn-stop-scan" class="btn-secondary">Cancel</button>
     </div>
-    <div id="reader"></div>
-    <p class="scanner-hint">Point camera at barcode, then tap the shutter button</p>
+    <div id="reader" aria-hidden="true"></div>
   </div>
 
   <!-- ================================================================

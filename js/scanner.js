@@ -32,17 +32,12 @@ function startScanner(title, onResult) {
     ]
   });
 
-  // Log available cameras to aid debugging
-  Html5Qrcode.getCameraDevices().then((devices) => {
-    console.log('[scanner] cameras:', devices.map(d => d.label));
-  });
-
-  const videoConstraints = { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } };
+  const videoConstraints = { facingMode: 'environment' };
   const qrboxFn = (vw, vh) => ({
     width:  Math.min(Math.round(vw * 0.90), 600),   // 90% of viewfinder, max 600px
     height: Math.min(Math.round(vh * 0.38), 220)    // 38% of viewfinder, max 220px
   });
-  console.log('[scanner] start — constraints:', videoConstraints, '| qrbox: fn(vw,vh)→90%/600 × 38%/220');
+  console.log('[scanner] start — qrbox: fn(vw,vh)→90%/600 × 38%/220');
   _scanner.start(
     videoConstraints,
     // Wide, short box fn: 90% wide / 38% tall, capped at 600×220px

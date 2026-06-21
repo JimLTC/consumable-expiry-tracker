@@ -18,6 +18,8 @@ function startScanner(title, onResult) {
   // defaults to QR Code only and ignores 1D barcodes entirely.
   const F = Html5QrcodeSupportedFormats;
   _scanner = new Html5Qrcode('reader', {
+    useBarCodeDetectorIfSupported: false,  // force ZXing; iOS BarcodeDetector is unreliable for 1D codes
+    verbose: true,                         // log ZXing internals to console for debugging
     formatsToSupport: [
       F.EAN_13,      // standard product barcode (most OTC medicine / consumer goods)
       F.EAN_8,       // short EAN barcode
@@ -158,6 +160,8 @@ function parseRawGS1(str) {
     } else if (ai === '17') {
       result.expiry = gs1DateToISO(str.substr(pos, 6));
       pos += 6;
+    } else if (ai === '20') {
+      pos += 2;  // fixed-length 2-digit field; step over it
     } else if (ai === '10' || ai === '21') {
       // Variable-length field: read until next FNC1 or end of string
       const end = str.indexOf(FNC1, pos);

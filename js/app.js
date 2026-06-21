@@ -22,7 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDashboard();
   setupReconcile();
   setupSettings();
-  updateApiDisplay();
 });
 
 // =====================================================================
@@ -607,13 +606,6 @@ function setupSettings() {
     saveSettings(state.settings);
     showToast('Settings saved', 'success');
   });
-}
-
-function updateApiDisplay() {
-  const el = document.getElementById('api-url-display');
-  if (el) el.textContent = (typeof API_URL !== 'undefined' && API_URL !== 'YOUR_APPS_SCRIPT_WEB_APP_URL_HERE')
-    ? API_URL
-    : '(not configured yet)';
 }
 
 // =====================================================================

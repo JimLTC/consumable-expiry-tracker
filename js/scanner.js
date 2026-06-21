@@ -18,8 +18,6 @@ function startScanner(title, onResult) {
   // defaults to QR Code only and ignores 1D barcodes entirely.
   const F = Html5QrcodeSupportedFormats;
   _scanner = new Html5Qrcode('reader', {
-    useBarCodeDetectorIfSupported: false,  // force ZXing; iOS BarcodeDetector is unreliable for 1D codes
-    verbose: true,                         // log ZXing internals to console for debugging
     formatsToSupport: [
       F.EAN_13,      // standard product barcode (most OTC medicine / consumer goods)
       F.EAN_8,       // short EAN barcode

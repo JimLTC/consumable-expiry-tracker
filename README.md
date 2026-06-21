@@ -35,8 +35,6 @@ Barcode scanning uses the phone camera and supports:
 
 ## Google Sheet structure
 
-**Sheet ID:** `1ExdQ4LS4p0BeyPkdm8OgkSRJZWY5iWT1nGUvZC8GVvU`
-
 The Sheet must have exactly three tabs with these names (case-sensitive):
 
 ### `Active Inventory`

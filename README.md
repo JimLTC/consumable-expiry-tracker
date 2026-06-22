@@ -13,10 +13,10 @@ A web app for tracking medical consumables (implants, drills, screws, etc.) by e
 | **Scan In** | Scan a barcode (or type manually) to log new stock arriving |
 | **Scan Out** | Scan an item before use — shows OK / EXPIRING SOON / EXPIRED status |
 | **Dashboard** | Full inventory sorted by soonest expiry, colour-coded |
-| **Reconcile** | Manual stock count — logs any discrepancies with a required written reason |
+| **Weekly** | Full shelf-by-shelf audit: confirm integrity and quantity for every item, log only mismatches and flags |
 | **Settings** | Set expiry warning window and global low-stock threshold |
 
-Barcode scanning uses the phone camera and supports:
+Barcode scanning uses the phone camera (photo capture — no live camera feed required) and supports:
 - Plain 1D barcodes (EAN, UPC, Code 128) — fills in the product ID
 - GS1 Data Matrix — automatically fills in product ID, expiry date, and lot number
 
@@ -49,6 +49,7 @@ The Sheet must have exactly three tabs with these names (case-sensitive):
 | G | Last Updated | Timestamp of most recent change |
 | H | Last Action By | Who performed the action (optional) |
 | I | Min Qty | Per-item low-stock alert threshold (optional — leave blank to use global default) |
+| J | Location | Shelf/drawer/cart identifier, e.g. `Shelf 3 / Drawer B` — used to group the weekly checklist in walking-route order (optional) |
 
 ### `Archive`
 Same columns as Active Inventory (A–H), plus:
@@ -60,15 +61,17 @@ Same columns as Active Inventory (A–H), plus:
 ### `Reconciliation Log`
 | Column | Header | Description |
 |---|---|---|
-| A | Timestamp | When the count was done |
+| A | Timestamp | When the check was done |
 | B | GTIN/Ref | Product ID |
 | C | Lot | Batch/lot number |
 | D | Expiry | Expiry date |
 | E | System Qty | What the system recorded before adjustment |
 | F | Physical Count | What was physically counted |
 | G | Variance | Physical − System |
-| H | Reason/Note | Required explanation for the discrepancy |
-| I | Adjusted By | Who did the count (optional) |
+| H | Reason/Note | Required explanation (mandatory for all flagged/adjusted items) |
+| I | Adjusted By | Who did the check (optional) |
+| J | Integrity Status | `OK` or `Flagged` — records physical condition separate from quantity |
+| K | Location | Shelf/drawer where the item was checked |
 
 ---
 
@@ -128,4 +131,6 @@ The Web App URL does not change — no need to update `config.js`.
 - **Auto-archive:** a batch is moved to Archive automatically when its quantity hits 0 AND its expiry date has passed
 - **Concurrency lock:** simultaneous scans from two phones cannot corrupt the stock count (Apps Script LockService)
 - **Per-item low-stock threshold:** set in the Dashboard's Min Qty column; falls back to the global default in Settings if blank
-- **Reconciliation audit trail:** every manual stock adjustment is logged to the Reconciliation Log with a required reason before the quantity is changed
+- **Weekly Check audit trail:** only items where quantity differs or integrity is flagged are logged — items that pass generate no record. Every logged entry requires a written reason before the quantity is adjusted.
+- **Weekly Check — scanning is optional:** the checker can proceed through every item without scanning. The per-row scan button is available only when confirming which physical lot is being checked (e.g. two lots of the same item side by side).
+- **Weekly Check — location grouping:** items are ordered by their Location column value so the checker can walk one route without backtracking. Items with no location set appear in an "Unassigned" group at the bottom.

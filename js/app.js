@@ -22,7 +22,6 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDashboard();
   setupReconcile();
   setupSettings();
-  updateApiDisplay();
 });
 
 // =====================================================================
@@ -214,29 +213,28 @@ function renderScanOutCard(item) {
   document.getElementById('btn-so-confirm').disabled = false;
   document.getElementById('so-qty').max = item.qty;
 
+  const expiryLabel = formatExpiry(item.expiry);
+
   if (item.expiry && item.expiry < today()) {
     card.className = 'card status-card status-expired';
     card.innerHTML = `
       <div class="status-badge">EXPIRED</div>
       <div><strong>${esc(item.name || item.gtin)}</strong></div>
-      <div class="status-detail">${Math.abs(daysLeft)} days overdue &middot; Expiry: ${esc(item.expiry)}</div>
+      <div class="status-detail">${esc(expiryLabel)}</div>
       <div class="status-detail">Lot: ${esc(item.lot || '&mdash;')} &middot; Qty in stock: ${item.qty}</div>`;
   } else if (item.expiry && daysLeft <= state.settings.expiryWarningDays) {
     card.className = 'card status-card status-expiring';
     card.innerHTML = `
       <div class="status-badge">EXPIRING SOON</div>
       <div><strong>${esc(item.name || item.gtin)}</strong></div>
-      <div class="status-detail">${daysLeft} day${daysLeft === 1 ? '' : 's'} remaining &middot; Expiry: ${esc(item.expiry)}</div>
+      <div class="status-detail">${esc(expiryLabel)}</div>
       <div class="status-detail">Lot: ${esc(item.lot || '&mdash;')} &middot; Qty in stock: ${item.qty}</div>`;
   } else {
     card.className = 'card status-card status-ok';
-    const expiryLine = item.expiry
-      ? `${daysLeft} day${daysLeft === 1 ? '' : 's'} remaining &middot; Expiry: ${esc(item.expiry)}`
-      : 'No expiry date recorded';
     card.innerHTML = `
       <div class="status-badge">OK</div>
       <div><strong>${esc(item.name || item.gtin)}</strong></div>
-      <div class="status-detail">${expiryLine}</div>
+      <div class="status-detail">${expiryLabel ? esc(expiryLabel) : 'No expiry date recorded'}</div>
       <div class="status-detail">Lot: ${esc(item.lot || '&mdash;')} &middot; Qty in stock: ${item.qty}</div>`;
   }
 }
@@ -292,9 +290,8 @@ function setupDashboard() {
 
 async function loadDashboard() {
   const content = document.getElementById('dashboard-content');
-  const summary = document.getElementById('dashboard-summary');
+  document.getElementById('dashboard-summary').classList.add('hidden');
   content.innerHTML = '<p class="no-items">Loading&hellip;</p>';
-  summary.classList.add('hidden');
 
   const result = await api.get('getInventory');
   if (!result.success) {
@@ -311,7 +308,7 @@ async function loadDashboard() {
   const { expiryWarningDays: wDays, lowStockThreshold: lowQty } = state.settings;
   const todayStr = today();
 
-  // Sort: expired first, then soonest expiry, then no-expiry items at end
+  // Sort: expired first → soonest expiry → no-expiry items last
   items.sort((a, b) => {
     if (!a.expiry && !b.expiry) return 0;
     if (!a.expiry) return 1;
@@ -319,71 +316,133 @@ async function loadDashboard() {
     return a.expiry.localeCompare(b.expiry);
   });
 
-  let expiredCount = 0, soonCount = 0;
+  // KPI counts
+  let expiredCount = 0, soonCount = 0, lowCount = 0;
   items.forEach(item => {
-    if (!item.expiry) return;
-    if (item.expiry < todayStr) expiredCount++;
-    else if (daysDiff(todayStr, item.expiry) <= wDays) soonCount++;
+    const threshold = item.minQty > 0 ? item.minQty : lowQty;
+    if (item.expiry && item.expiry < todayStr)                           expiredCount++;
+    else if (item.expiry && daysDiff(todayStr, item.expiry) <= wDays)   soonCount++;
+    if (item.qty > 0 && item.qty <= threshold)                           lowCount++;
   });
 
-  summary.classList.remove('hidden');
-  summary.innerHTML = `
-    <div class="summary-badge badge-danger">
-      <span class="count">${expiredCount}</span>Expired
+  // ── KPI cards ───────────────────────────────────────────────────────
+  const kpiHtml = `<div class="kpi-grid">
+    <div class="kpi-card kpi-total">
+      <div class="kpi-lbl">Active Batches</div>
+      <div class="kpi-num">${items.length}</div>
     </div>
-    <div class="summary-badge badge-warn">
-      <span class="count">${soonCount}</span>Within ${wDays}d
+    <div class="kpi-card kpi-expiring">
+      <div class="kpi-lbl">Expiring Soon</div>
+      <div class="kpi-num">${soonCount}</div>
     </div>
-    <div class="summary-badge badge-ok">
-      <span class="count">${items.length}</span>Total
-    </div>`;
+    <div class="kpi-card kpi-expired">
+      <div class="kpi-lbl">Expired</div>
+      <div class="kpi-num">${expiredCount}</div>
+    </div>
+    <div class="kpi-card kpi-low">
+      <div class="kpi-lbl">Low Stock</div>
+      <div class="kpi-num">${lowCount}</div>
+    </div>
+  </div>`;
 
-  const rows = items.map((item, idx) => {
-    // Per-item threshold takes priority; fall back to global default
+  // ── Expiry ring timeline (soonest-expiring, max 8) ──────────────────
+  const withExpiry = items.filter(i => i.expiry).slice(0, 8);
+  let timelineHtml = '';
+  if (withExpiry.length > 0) {
+    const rows = withExpiry.map(item => {
+      const expired  = item.expiry < todayStr;
+      const dLeft    = daysDiff(todayStr, item.expiry);
+      const expiring = !expired && dLeft <= wDays;
+      const color    = expired ? 'var(--red)' : expiring ? 'var(--amber)' : 'var(--green)';
+      const pct      = expired ? 0 : Math.min(100, (dLeft / 90) * 100);
+      const center   = expired ? 'EXP' : dLeft === 0 ? '0d' : dLeft < 100 ? dLeft + 'd' : '90+';
+      return `<div class="ring-list-item">
+        <div class="ring-wrap">${ringHTML(pct, color, center)}</div>
+        <div class="ring-info">
+          <div class="ring-name">${esc(item.name || item.gtin)}</div>
+          <div class="ring-expiry" style="color:${color}">${esc(formatExpiry(item.expiry))}</div>
+          <div class="ring-meta">Lot: ${esc(item.lot || '—')} · Qty: ${item.qty}</div>
+        </div>
+      </div>`;
+    }).join('');
+    timelineHtml = `<div class="panel">
+      <div class="panel-header"><h3>Expiry Timeline</h3></div>
+      <div class="panel-body">${rows}</div>
+    </div>`;
+  }
+
+  // ── Stock levels chart (grouped by item name, top 10 by qty) ────────
+  const nameMap = {};
+  items.forEach(item => {
+    const name = item.name || item.gtin;
+    if (!nameMap[name]) nameMap[name] = { qty: 0, expired: false, expiring: false };
+    nameMap[name].qty += item.qty;
+    if (item.expiry && item.expiry < todayStr) nameMap[name].expired = true;
+    else if (item.expiry && daysDiff(todayStr, item.expiry) <= wDays) nameMap[name].expiring = true;
+  });
+  const nameEntries = Object.entries(nameMap).sort((a, b) => b[1].qty - a[1].qty).slice(0, 10);
+  let chartHtml = '';
+  if (nameEntries.length > 1) {
+    const maxQty = Math.max(1, ...nameEntries.map(([, v]) => v.qty));
+    const bars = nameEntries.map(([name, v]) => {
+      const color = v.expired ? 'var(--red)' : v.expiring ? 'var(--amber)' : 'var(--green)';
+      const w = Math.max(3, Math.round((v.qty / maxQty) * 100));
+      return `<div class="stock-bar-item">
+        <div class="stock-bar-header">
+          <span class="stock-bar-name">${esc(name)}</span>
+          <span class="stock-bar-qty">${v.qty}</span>
+        </div>
+        <div class="stock-bar-track">
+          <div class="stock-bar-fill" style="width:${w}%;background:${color}"></div>
+        </div>
+      </div>`;
+    }).join('');
+    chartHtml = `<div class="panel">
+      <div class="panel-header"><h3>Stock Levels by Item</h3></div>
+      <div class="panel-body">${bars}</div>
+    </div>`;
+  }
+
+  // ── Full inventory cards ─────────────────────────────────────────────
+  const cards = items.map((item, idx) => {
     const threshold = item.minQty > 0 ? item.minQty : lowQty;
     const expired  = item.expiry && item.expiry < todayStr;
     const expiring = !expired && item.expiry && daysDiff(todayStr, item.expiry) <= wDays;
     const low      = item.qty > 0 && item.qty <= threshold;
-    const rowClass = expired ? 'row-expired' : expiring ? 'row-expiring' : '';
-
-    const expiryTags = [
-      expired  ? '<span class="badge-expired">EXPIRED</span>'   : '',
-      expiring ? '<span class="badge-expiring">EXPIRING</span>' : ''
-    ].join('');
-
-    return `<tr class="${rowClass}" data-idx="${idx}">
-      <td>${esc(item.name || '&mdash;')}</td>
-      <td>${esc(item.gtin)}</td>
-      <td>${esc(item.lot || '&mdash;')}</td>
-      <td class="${low ? 'cell-low' : ''}">${item.qty}${low ? ' <span class="badge-low">LOW</span>' : ''}</td>
-      <td>${esc(item.expiry || '&mdash;')}${expired || expiring ? ' ' + expiryTags : ''}</td>
-      <td>
-        <input type="number" class="minqty-input" data-idx="${idx}"
+    const cls      = expired ? 'inv-card-expired' : expiring ? 'inv-card-expiring' : 'inv-card-ok';
+    const badge    = expired
+      ? '<span class="badge badge-expired">Expired</span>'
+      : expiring ? '<span class="badge badge-expiring">Soon</span>' : '';
+    return `<div class="inv-card ${cls}">
+      <div class="inv-card-header">
+        <span class="inv-card-name">${esc(item.name || item.gtin)}</span>
+        ${badge}
+      </div>
+      <div class="inv-card-expiry">${esc(formatExpiry(item.expiry) || 'No expiry date')}</div>
+      <div class="inv-card-meta">
+        <span>Qty: <strong class="${low ? 'inv-card-qty-low' : ''}">${item.qty}${low ? ' · LOW' : ''}</strong></span>
+        ${item.lot    ? '<span>Lot: ' + esc(item.lot) + '</span>' : ''}
+        ${item.gtin && item.name ? '<span class="mono" style="font-size:.7rem">' + esc(item.gtin) + '</span>' : ''}
+      </div>
+      <div class="inv-card-minqty">
+        <label for="mq-${idx}" style="white-space:nowrap">Min qty alert:</label>
+        <input type="number" id="mq-${idx}" class="minqty-input" data-idx="${idx}"
                value="${item.minQty > 0 ? item.minQty : ''}"
-               placeholder="${lowQty}" min="0" title="Alert when qty falls to this number (blank = global default of ${lowQty})">
-      </td>
-    </tr>`;
+               placeholder="${lowQty}" min="0" title="Alert threshold (blank = global default of ${lowQty})">
+      </div>
+    </div>`;
   }).join('');
 
-  content.innerHTML = `
-    <div style="overflow-x:auto;margin-top:12px">
-      <table class="inventory-table">
-        <thead>
-          <tr>
-            <th>Item Name</th>
-            <th>GTIN / Ref</th>
-            <th>Lot</th>
-            <th>Qty</th>
-            <th>Expiry</th>
-            <th title="Alert threshold for this item. Blank = use global default.">Min&nbsp;Qty&nbsp;&#9432;</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
+  const inventoryHtml = `<div class="panel">
+    <div class="panel-header"><h3>All Inventory</h3></div>
+    <div class="panel-body" style="padding:6px 16px 14px">
+      ${cards}
+      <p class="small" style="margin-top:10px">Min Qty per item — blank uses global default (${lowQty}). Saves automatically.</p>
     </div>
-    <p class="small" style="margin-top:8px">Min Qty: set per item, or leave blank to use the global default (${lowQty}). Changes save automatically.</p>`;
+  </div>`;
 
-  // Save min qty when user finishes editing a cell (on blur or Enter)
+  content.innerHTML = kpiHtml + timelineHtml + chartHtml + inventoryHtml;
+
   content.querySelectorAll('.minqty-input').forEach(input => {
     const save = async () => {
       const idx  = parseInt(input.dataset.idx, 10);
@@ -549,13 +608,6 @@ function setupSettings() {
   });
 }
 
-function updateApiDisplay() {
-  const el = document.getElementById('api-url-display');
-  if (el) el.textContent = (typeof API_URL !== 'undefined' && API_URL !== 'YOUR_APPS_SCRIPT_WEB_APP_URL_HERE')
-    ? API_URL
-    : '(not configured yet)';
-}
-
 // =====================================================================
 // SHARED UTILITIES
 // =====================================================================
@@ -591,6 +643,16 @@ function daysDiff(dateA, dateB) {
   if (!dateB) return Infinity;
   return Math.round((new Date(dateB) - new Date(dateA)) / 86400000);
 }
+function formatExpiry(isoDate) {
+  if (!isoDate) return null;
+  const days = daysDiff(today(), isoDate);
+  if (days < 0)   return `Expired ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ago`;
+  if (days === 0) return 'Expires today';
+  if (days === 1) return 'Expires tomorrow';
+  if (days <= 30) return `Expires in ${days} days`;
+  const d = new Date(isoDate + 'T00:00:00');
+  return 'Expires ' + d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
 
 // Prevent XSS when inserting dynamic content into innerHTML
 function esc(str) {
@@ -600,6 +662,22 @@ function esc(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+// SVG ring progress indicator (pct 0–100, color CSS value, short center label)
+function ringHTML(pct, color, centerText) {
+  const R    = 22;
+  const circ = +(2 * Math.PI * R).toFixed(2);
+  const dash = +((pct / 100) * circ).toFixed(2);
+  return `<svg width="52" height="52" viewBox="0 0 52 52" aria-hidden="true">
+    <circle cx="26" cy="26" r="${R}" fill="none" stroke="#dce1ed" stroke-width="4.5"/>
+    <circle cx="26" cy="26" r="${R}" fill="none" stroke="${color}" stroke-width="4.5"
+            stroke-dasharray="${dash} ${circ}" stroke-linecap="round"
+            transform="rotate(-90 26 26)"/>
+    <text x="26" y="26" text-anchor="middle" dominant-baseline="middle"
+          font-size="9.5" font-family="'DM Mono',monospace" font-weight="500"
+          fill="${color}">${esc(centerText)}</text>
+  </svg>`;
 }
 
 // DOM helpers

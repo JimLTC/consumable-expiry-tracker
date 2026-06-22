@@ -2,79 +2,62 @@
 // Camera scanner (html5-qrcode) + GS1 Data Matrix parser
 // =====================================================================
 
-let _scanner = null;
-let _lastScanErrorLog = 0;  // throttle per-frame error logs (ms timestamp)
-
 /**
- * Open the camera overlay and start scanning.
- * @param {string}   title    Heading shown in the overlay
+ * Open the native iOS camera as a still-photo picker, then decode the barcode
+ * from the captured image. Uses <input capture="environment"> which bypasses
+ * WebRTC entirely — no getUserMedia, no black screen, no permission conflicts.
+ * @param {string}   title    Heading shown in the "Processing…" overlay
  * @param {Function} onResult Called with (rawText, parsedGS1) when a code is read
  */
 function startScanner(title, onResult) {
-  document.getElementById('scanner-title').textContent = title;
-  document.getElementById('scanner-overlay').classList.remove('hidden');
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.capture = 'environment';  // opens rear camera directly on iOS
 
-  // Explicitly list every format we want — without this, html5-qrcode
-  // defaults to QR Code only and ignores 1D barcodes entirely.
-  const F = Html5QrcodeSupportedFormats;
-  _scanner = new Html5Qrcode('reader', {
-    useBarCodeDetectorIfSupported: false,  // force ZXing; iOS BarcodeDetector is unreliable for 1D codes
-    verbose: true,                         // log ZXing internals to console for debugging
-    formatsToSupport: [
-      F.EAN_13,      // standard product barcode (most OTC medicine / consumer goods)
-      F.EAN_8,       // short EAN barcode
-      F.UPC_A,       // US product barcode
-      F.UPC_E,       // compressed UPC
-      F.CODE_128,    // GS1-128 used on medical packaging
-      F.CODE_39,     // older medical/lab barcodes
-      F.DATA_MATRIX, // GS1 DataMatrix (implants, surgical items)
-      F.QR_CODE,     // general QR codes
-      F.CODABAR,     // Codabar (blood bank, libraries)
-      F.ITF          // Interleaved 2-of-5 (cartons, logistics)
-    ]
-  });
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
 
-  // Log available cameras to aid debugging
-  Html5Qrcode.getCameraDevices().then((devices) => {
-    console.log('[scanner] cameras:', devices.map(d => d.label));
-  });
+    document.getElementById('scanner-title').textContent = 'Processing…';
+    document.getElementById('scanner-overlay').classList.remove('hidden');
+    document.getElementById('btn-stop-scan').onclick = () => stopScanner();
 
-  const videoConstraints = { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } };
-  const qrboxFn = (vw, vh) => ({
-    width:  Math.min(Math.round(vw * 0.90), 600),   // 90% of viewfinder, max 600px
-    height: Math.min(Math.round(vh * 0.38), 220)    // 38% of viewfinder, max 220px
-  });
-  console.log('[scanner] start — constraints:', videoConstraints, '| qrbox: fn(vw,vh)→90%/600 × 38%/220');
-  _scanner.start(
-    videoConstraints,
-    // Wide, short box fn: 90% wide / 38% tall, capped at 600×220px
-    { fps: 15, qrbox: qrboxFn },
-    (decoded) => {
-      console.log('[scanner] decoded:', decoded);
+    const F = Html5QrcodeSupportedFormats;
+    const scanner = new Html5Qrcode('reader', {
+      formatsToSupport: [
+        F.EAN_13,      // standard product barcode (most OTC medicine / consumer goods)
+        F.EAN_8,       // short EAN barcode
+        F.UPC_A,       // US product barcode
+        F.UPC_E,       // compressed UPC
+        F.CODE_128,    // GS1-128 used on medical packaging
+        F.CODE_39,     // older medical/lab barcodes
+        F.DATA_MATRIX, // GS1 DataMatrix (implants, surgical items)
+        F.QR_CODE,     // general QR codes
+        F.CODABAR,     // Codabar (blood bank, libraries)
+        F.ITF          // Interleaved 2-of-5 (cartons, logistics)
+      ]
+    });
+
+    try {
+      const decoded = await scanner.scanFile(file, /* showImage */ false);
+      console.log('[scanner] photo decoded:', decoded);
       stopScanner();
       onResult(decoded, parseBarcode(decoded));
-    },
-    (err) => {  // per-frame errors: log throttled to once per 3s
-      const now = Date.now();
-      if (now - _lastScanErrorLog > 3000) {
-        console.log('[scanner] frame error:', err);
-        _lastScanErrorLog = now;
-      }
+    } catch (err) {
+      console.log('[scanner] photo scan failed:', err);
+      stopScanner();
+      showToast('No barcode found — try again, hold closer and keep still', 'error');
+    } finally {
+      scanner.clear().catch(() => {});
     }
-  ).catch((err) => {
-    stopScanner();
-    showToast('Camera error: ' + err, 'error');
-  });
+  };
 
-  document.getElementById('btn-stop-scan').onclick = () => stopScanner();
+  input.click();  // opens native iOS camera immediately
 }
 
 function stopScanner() {
   document.getElementById('scanner-overlay').classList.add('hidden');
-  if (_scanner) {
-    _scanner.stop().then(() => _scanner.clear()).catch(() => {});
-    _scanner = null;
-  }
 }
 
 // =====================================================================

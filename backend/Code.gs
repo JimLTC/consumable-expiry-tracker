@@ -32,7 +32,8 @@ const C = {
   DATE_LOGGED:  5,  // F: Date First Logged
   LAST_UPDATED: 6,  // G: Last Updated
   ACTION_BY:    7,  // H: Last Action By
-  MIN_QTY:      8   // I: Min Qty (per-item low-stock alert threshold)
+  MIN_QTY:      8,  // I: Min Qty (per-item low-stock alert threshold)
+  LOCATION:     9   // J: Shelf/drawer/cart identifier for weekly check grouping
 };
 
 // Archive-only extra columns
@@ -140,6 +141,7 @@ function scanIn(params) {
   const itemName = String(params.itemName || '').trim();
   const actionBy = String(params.actionBy || '').trim();
   const minQty   = params.minQty !== undefined ? Number(params.minQty) : null;
+  const location = String(params.location || '').trim();
 
   if (!gtin) return { success: false, error: 'GTIN is required' };
   if (qty < 1) return { success: false, error: 'Quantity must be at least 1' };
@@ -158,12 +160,13 @@ function scanIn(params) {
       const newQty  = (Number(qtyCell.getValue()) || 0) + qty;
       qtyCell.setValue(newQty);
       sheet.getRange(rowNum, C.LAST_UPDATED + 1).setValue(now);
-      if (actionBy) sheet.getRange(rowNum, C.ACTION_BY + 1).setValue(actionBy);
+      if (actionBy)  sheet.getRange(rowNum, C.ACTION_BY + 1).setValue(actionBy);
+      if (location)  sheet.getRange(rowNum, C.LOCATION + 1).setValue(location);
       return { success: true, action: 'updated', newQty: newQty };
     } else {
       // New batch — append row
       const minQtyVal = (minQty !== null && minQty >= 0) ? minQty : '';
-      sheet.appendRow([gtin, lot, expiry, qty, itemName, now, now, actionBy, minQtyVal]);
+      sheet.appendRow([gtin, lot, expiry, qty, itemName, now, now, actionBy, minQtyVal, location]);
       return { success: true, action: 'created', newQty: qty };
     }
   } finally {
@@ -220,20 +223,23 @@ function scanOut(params) {
 }
 
 /**
- * Log a reconciliation discrepancy and adjust inventory to the physical count.
- * A reason note is required before the adjustment is saved.
+ * Log a weekly-check entry and adjust inventory to the physical count.
+ * Called only for items where quantity differs OR integrity is flagged.
+ * A reason note is always required for these cases.
  */
 function reconcile(params) {
-  const gtin          = String(params.gtin          || '').trim();
-  const lot           = String(params.lot           || '').trim();
-  const expiry        = String(params.expiry        || '').trim();
-  const physicalCount = Number(params.physicalCount);
-  const reason        = String(params.reason        || '').trim();
-  const adjustedBy    = String(params.adjustedBy    || '').trim();
+  const gtin            = String(params.gtin            || '').trim();
+  const lot             = String(params.lot             || '').trim();
+  const expiry          = String(params.expiry          || '').trim();
+  const physicalCount   = Number(params.physicalCount);
+  const reason          = String(params.reason          || '').trim();
+  const adjustedBy      = String(params.adjustedBy      || '').trim();
+  const integrityStatus = String(params.integrityStatus || 'OK').trim();
+  const location        = String(params.location        || '').trim();
 
-  if (!gtin)            return { success: false, error: 'GTIN is required' };
+  if (!gtin)                return { success: false, error: 'GTIN is required' };
   if (isNaN(physicalCount)) return { success: false, error: 'physicalCount must be a number' };
-  if (!reason)          return { success: false, error: 'A reason/note is required' };
+  if (!reason)              return { success: false, error: 'A reason/note is required' };
 
   const lock = LockService.getSpreadsheetLock();
   if (!lock.tryLock(10000)) return { success: false, error: 'Server busy — please try again' };
@@ -245,19 +251,21 @@ function reconcile(params) {
 
     if (rowNum === -1) return { success: false, error: 'Batch not found in Active Inventory' };
 
-    const row       = activeSheet.getRange(rowNum, 1, 1, 8).getValues()[0];
+    const row       = activeSheet.getRange(rowNum, 1, 1, 10).getValues()[0];
     const systemQty = Number(row[C.QTY]) || 0;
     const variance  = physicalCount - systemQty;
     const now       = new Date();
 
-    // Write to Reconciliation Log first (audit trail)
+    // Write to Reconciliation Log (columns A–K)
     reconSheet.appendRow([
       now, gtin, lot, expiry,
       systemQty, physicalCount, variance,
-      reason, adjustedBy
+      reason, adjustedBy,
+      integrityStatus,  // J: Integrity Status
+      location          // K: Location
     ]);
 
-    // Then update Active Inventory
+    // Update Active Inventory quantity
     activeSheet.getRange(rowNum, C.QTY + 1).setValue(physicalCount);
     activeSheet.getRange(rowNum, C.LAST_UPDATED + 1).setValue(now);
     if (adjustedBy) activeSheet.getRange(rowNum, C.ACTION_BY + 1).setValue(adjustedBy);
@@ -387,7 +395,8 @@ function rowToItem(row) {
     dateLogged:  normalizeDateTime(row[C.DATE_LOGGED]),
     lastUpdated: normalizeDateTime(row[C.LAST_UPDATED]),
     actionBy:    String(row[C.ACTION_BY]).trim(),
-    minQty:      Number(row[C.MIN_QTY]) || 0
+    minQty:      Number(row[C.MIN_QTY]) || 0,
+    location:    String(row[C.LOCATION] || '').trim()
   };
 }
 

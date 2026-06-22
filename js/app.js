@@ -4,10 +4,10 @@
 
 // --- App state ---
 const state = {
-  lastScan:       { text: '', time: 0 },  // for duplicate-scan guard
-  scanOutItem:    null,                    // item found after scan-out lookup
-  reconcileItems: [],                      // full inventory loaded for reconciliation
-  settings:       null                     // loaded on init
+  lastScan:    { text: '', time: 0 },  // for duplicate-scan guard
+  scanOutItem: null,                   // item found after scan-out lookup
+  weeklyCheck: { items: [], decisions: [] },
+  settings:    null                    // loaded on init
 };
 
 // =====================================================================
@@ -462,133 +462,342 @@ async function loadDashboard() {
 }
 
 // =====================================================================
-// RECONCILIATION
+// WEEKLY CHECK
 // =====================================================================
 
 function setupReconcile() {
-  document.getElementById('btn-load-reconcile').addEventListener('click', loadReconcile);
-  document.getElementById('btn-submit-reconcile').addEventListener('click', submitReconcile);
+  renderWCIdle();
 }
 
-async function loadReconcile() {
-  const list       = document.getElementById('reconcile-list');
-  const submitArea = document.getElementById('reconcile-submit-area');
-  list.innerHTML = '<p class="no-items">Loading&hellip;</p>';
-  hide('reconcile-submit-area');
+function renderWCIdle() {
+  const container = document.getElementById('wc-container');
+  container.innerHTML = `
+    <p class="helper-text">Walk through all items shelf-by-shelf. Confirm integrity and quantities — scanning is optional.</p>
+    <button id="btn-wc-start" class="btn-primary">Start Weekly Check</button>
+  `;
+  document.getElementById('btn-wc-start').addEventListener('click', loadWeeklyCheck);
+}
+
+async function loadWeeklyCheck() {
+  const container = document.getElementById('wc-container');
+  container.innerHTML = '<p class="no-items">Loading inventory&hellip;</p>';
 
   const result = await api.get('getInventory');
   if (!result.success) {
-    list.innerHTML = `<p class="no-items">Error: ${esc(result.error)}</p>`;
+    container.innerHTML = `<p class="no-items">Error: ${esc(result.error)}</p>`;
     return;
   }
 
-  state.reconcileItems = result.items || [];
-  if (state.reconcileItems.length === 0) {
-    list.innerHTML = '<p class="no-items">No items in inventory.</p>';
+  const items = result.items || [];
+  if (items.length === 0) {
+    container.innerHTML = '<p class="no-items">No items in inventory.</p>';
     return;
   }
 
-  list.innerHTML = state.reconcileItems.map((item, i) => `
-    <div class="recon-item">
-      <div class="recon-item-header">${esc(item.name || item.gtin)}</div>
-      <div class="recon-item-meta">
-        GTIN: ${esc(item.gtin)}
-        ${item.lot    ? ' &middot; Lot: '    + esc(item.lot)    : ''}
-        ${item.expiry ? ' &middot; Expiry: ' + esc(item.expiry) : ''}
-      </div>
-      <div class="recon-count-row">
-        <span>System: <strong>${item.qty}</strong></span>
-        <label for="recon-count-${i}">Physical&nbsp;count:</label>
-        <input type="number" id="recon-count-${i}" data-index="${i}"
-               value="${item.qty}" min="0" class="recon-count-input">
-        <span class="recon-variance" id="recon-var-${i}"></span>
-      </div>
-      <div class="recon-reason" id="recon-reason-div-${i}">
-        <label style="font-size:.82rem;font-weight:600;color:var(--warning)">
-          Reason required:
-        </label>
-        <input type="text" id="recon-reason-${i}" data-index="${i}"
-               placeholder="e.g. used without scanning, miscount, found extra">
-      </div>
-    </div>`).join('');
+  state.weeklyCheck = {
+    items,
+    decisions: items.map(() => ({
+      integrityStatus: null,   // null | 'ok' | 'flagged'
+      flagNote:        '',
+      qtyMode:         null,   // null | 'matches' | 'adjusted'
+      physicalQty:     null,
+      reason:          '',
+      done:            false
+    }))
+  };
 
-  // Show/hide reason field and variance live as user types counts
-  document.querySelectorAll('.recon-count-input').forEach(input => {
-    input.addEventListener('input', () => {
-      const i      = parseInt(input.dataset.index, 10);
-      const sysQty = state.reconcileItems[i].qty;
-      const phys   = parseInt(input.value, 10);
-      const varEl  = document.getElementById('recon-var-' + i);
-      const rdiv   = document.getElementById('recon-reason-div-' + i);
-
-      if (isNaN(phys)) {
-        varEl.textContent = '';
-        rdiv.classList.remove('visible');
-        return;
-      }
-      const diff = phys - sysQty;
-      varEl.textContent = diff === 0 ? '✓' : (diff > 0 ? '+' + diff : '' + diff);
-      varEl.className   = 'recon-variance ' + (diff > 0 ? 'pos' : diff < 0 ? 'neg' : 'zero');
-      rdiv.classList.toggle('visible', diff !== 0);
-    });
-  });
-
-  show('reconcile-submit-area');
+  renderWCChecklist();
 }
 
-async function submitReconcile() {
-  const items    = state.reconcileItems;
-  const btn      = document.getElementById('btn-submit-reconcile');
-  const errors   = [];
-  const toSubmit = [];
+function renderWCChecklist() {
+  const { items } = state.weeklyCheck;
+  const container = document.getElementById('wc-container');
 
+  // Group items by location; unassigned goes last
+  const groups = new Map();
   items.forEach((item, i) => {
-    const countEl  = document.getElementById('recon-count-'  + i);
-    const reasonEl = document.getElementById('recon-reason-' + i);
-    const phys = parseInt(countEl?.value, 10);
-    if (isNaN(phys)) return;
-
-    const diff = phys - item.qty;
-    if (diff === 0) return; // no discrepancy, skip
-
-    const reason = reasonEl?.value.trim();
-    if (!reason) {
-      errors.push(`"${item.name || item.gtin}": reason is required`);
-      return;
-    }
-    toSubmit.push({ item, physicalCount: phys, reason });
+    const key = (item.location && item.location.trim()) || '__unassigned__';
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push({ item, i });
   });
 
-  if (errors.length > 0) {
-    showToast('Please fill in: ' + errors[0] + (errors.length > 1 ? ` (+${errors.length - 1} more)` : ''), 'error');
-    return;
-  }
-  if (toSubmit.length === 0) {
-    showToast('No discrepancies to submit', 'warning');
-    return;
+  const sortedKeys = Array.from(groups.keys()).sort((a, b) => {
+    if (a === '__unassigned__') return 1;
+    if (b === '__unassigned__') return -1;
+    return a.localeCompare(b);
+  });
+
+  let html = '';
+  for (const key of sortedKeys) {
+    const label = key === '__unassigned__' ? 'Unassigned' : key;
+    html += `<div class="wc-location-group">
+      <div class="wc-location-header">${esc(label)}<span class="wc-location-count">${groups.get(key).length}</span></div>
+      ${groups.get(key).map(({ item, i }) => renderWCItemCard(item, i)).join('')}
+    </div>`;
   }
 
-  setLoading(btn, `Submitting ${toSubmit.length} adjustment(s)...`);
-  let successCount = 0;
+  html += `<div id="wc-finish-area" class="hidden">
+    <button id="btn-wc-finish" class="btn-primary">Finish Check</button>
+  </div>`;
 
-  for (const { item, physicalCount, reason } of toSubmit) {
-    const result = await api.post('reconcile', {
-      gtin:   item.gtin,
-      lot:    item.lot,
-      expiry: item.expiry,
-      physicalCount,
-      reason
+  container.innerHTML = html;
+  items.forEach((_, i) => wireWCCard(i));
+  document.getElementById('btn-wc-finish').addEventListener('click', submitWeeklyCheck);
+}
+
+function renderWCItemCard(item, i) {
+  const todayStr  = today();
+  const expired   = item.expiry && item.expiry < todayStr;
+  const expiring  = !expired && item.expiry && daysDiff(todayStr, item.expiry) <= (state.settings.expiryWarningDays || 14);
+  const badgeCls  = expired ? 'badge-expired' : expiring ? 'badge-expiring' : '';
+  const expiryStr = formatExpiry(item.expiry);
+  const borderCls = expired ? 'wc-item-card-expired' : expiring ? 'wc-item-card-expiring' : '';
+
+  return `<div class="wc-item-card ${borderCls}" id="wc-card-${i}">
+    <div class="wc-item-header">
+      <span class="wc-item-name">${esc(item.name || item.gtin)}</span>
+      ${badgeCls ? `<span class="badge ${badgeCls}">${expired ? 'Expired' : 'Soon'}</span>` : ''}
+    </div>
+    <div class="wc-item-meta">
+      Qty: <strong>${item.qty}</strong>
+      ${item.lot    ? ' &middot; Lot ' + esc(item.lot)    : ''}
+      ${expiryStr   ? ' &middot; ' + esc(expiryStr)       : ''}
+    </div>
+
+    <div class="wc-integrity-row">
+      <span class="wc-row-label">Integrity</span>
+      <button type="button" class="wc-btn-integrity" data-index="${i}" data-choice="ok">&#10003; OK</button>
+      <button type="button" class="wc-btn-integrity" data-index="${i}" data-choice="flagged">&#9873; Flag</button>
+      <button type="button" class="wc-scan-icon-btn" data-index="${i}" title="Optional: scan to confirm item" aria-label="Scan to confirm">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+      </button>
+    </div>
+    <div class="wc-flag-note hidden" id="wc-flag-note-${i}">
+      <input type="text" id="wc-flag-input-${i}" placeholder="Brief note (e.g. packaging torn)">
+    </div>
+    <div class="wc-scan-confirm hidden" id="wc-scan-confirm-${i}"></div>
+
+    <div class="wc-qty-row">
+      <span class="wc-row-label">Quantity</span>
+      <button type="button" class="wc-btn-qty" data-index="${i}" data-choice="matches">&#10003; Matches</button>
+      <button type="button" class="wc-btn-qty" data-index="${i}" data-choice="adjusted">Different</button>
+    </div>
+    <div class="wc-adjusted-qty hidden" id="wc-adj-qty-${i}">
+      <label>Physical count:</label>
+      <input type="number" id="wc-qty-input-${i}" value="${item.qty}" min="0" inputmode="numeric">
+    </div>
+
+    <div class="wc-reason-field hidden" id="wc-reason-${i}">
+      <label>Reason (required)</label>
+      <input type="text" id="wc-reason-input-${i}" placeholder="e.g. damaged packaging, found extra, used without scanning">
+    </div>
+  </div>`;
+}
+
+function wireWCCard(i) {
+  const item = state.weeklyCheck.items[i];
+
+  // Integrity tap targets
+  document.querySelectorAll(`.wc-btn-integrity[data-index="${i}"]`).forEach(btn => {
+    btn.addEventListener('click', () => {
+      const choice = btn.dataset.choice;
+      state.weeklyCheck.decisions[i].integrityStatus = choice;
+
+      document.querySelectorAll(`.wc-btn-integrity[data-index="${i}"]`).forEach(b => {
+        b.classList.remove('selected-ok', 'selected-flag');
+      });
+      btn.classList.add(choice === 'ok' ? 'selected-ok' : 'selected-flag');
+
+      const flagNoteEl = document.getElementById('wc-flag-note-' + i);
+      if (choice === 'flagged') {
+        flagNoteEl.classList.remove('hidden');
+        document.getElementById('wc-flag-input-' + i).focus();
+      } else {
+        flagNoteEl.classList.add('hidden');
+        state.weeklyCheck.decisions[i].flagNote = '';
+      }
+      updateWCItemDone(i);
     });
-    if (result.success) successCount++;
-    else showToast('Error (' + (item.name || item.gtin) + '): ' + result.error, 'error');
+  });
+
+  document.getElementById('wc-flag-input-' + i).addEventListener('input', e => {
+    state.weeklyCheck.decisions[i].flagNote = e.target.value.trim();
+    updateWCItemDone(i);
+  });
+
+  // Quantity tap targets
+  document.querySelectorAll(`.wc-btn-qty[data-index="${i}"]`).forEach(btn => {
+    btn.addEventListener('click', () => {
+      const choice = btn.dataset.choice;
+      state.weeklyCheck.decisions[i].qtyMode = choice;
+      if (choice === 'matches') state.weeklyCheck.decisions[i].physicalQty = item.qty;
+
+      document.querySelectorAll(`.wc-btn-qty[data-index="${i}"]`).forEach(b => {
+        b.classList.remove('selected-ok', 'selected-adj');
+      });
+      btn.classList.add(choice === 'matches' ? 'selected-ok' : 'selected-adj');
+
+      const adjEl = document.getElementById('wc-adj-qty-' + i);
+      if (choice === 'adjusted') {
+        adjEl.classList.remove('hidden');
+        document.getElementById('wc-qty-input-' + i).select();
+      } else {
+        adjEl.classList.add('hidden');
+      }
+      updateWCItemDone(i);
+    });
+  });
+
+  document.getElementById('wc-qty-input-' + i).addEventListener('input', e => {
+    const val = parseInt(e.target.value, 10);
+    state.weeklyCheck.decisions[i].physicalQty = isNaN(val) ? null : val;
+    updateWCItemDone(i);
+  });
+
+  document.getElementById('wc-reason-input-' + i).addEventListener('input', e => {
+    state.weeklyCheck.decisions[i].reason = e.target.value.trim();
+    updateWCItemDone(i);
+  });
+
+  // Optional per-row scan
+  document.querySelector(`.wc-scan-icon-btn[data-index="${i}"]`).addEventListener('click', () => {
+    startScanner('Confirm item — scan barcode', (rawText, parsed) => {
+      const scannedGtin = (parsed.gtin || rawText || '').trim();
+      const confirmEl   = document.getElementById('wc-scan-confirm-' + i);
+      confirmEl.classList.remove('hidden', 'wc-scan-match', 'wc-scan-mismatch');
+      if (scannedGtin === item.gtin) {
+        confirmEl.classList.add('wc-scan-match');
+        confirmEl.textContent = '✓ Confirmed — matches this item';
+      } else {
+        confirmEl.classList.add('wc-scan-mismatch');
+        confirmEl.textContent = '⚠ Scanned: ' + scannedGtin + ' — different item';
+      }
+    });
+  });
+}
+
+function updateWCItemDone(i) {
+  const dec  = state.weeklyCheck.decisions[i];
+  const item = state.weeklyCheck.items[i];
+
+  const integritySet = dec.integrityStatus !== null;
+  const physQty      = dec.physicalQty ?? item.qty;
+  const variance     = physQty - item.qty;
+  const qtySet       = dec.qtyMode === 'matches' ||
+                       (dec.qtyMode === 'adjusted' && dec.physicalQty !== null);
+
+  // Reason is required when integrity flagged OR qty actually differs
+  const needsReason = dec.integrityStatus === 'flagged' ||
+                      (dec.qtyMode === 'adjusted' && variance !== 0);
+
+  const reasonEl = document.getElementById('wc-reason-' + i);
+  if (needsReason) {
+    reasonEl.classList.remove('hidden');
+  } else {
+    reasonEl.classList.add('hidden');
+    dec.reason = '';
   }
 
-  resetButton(btn, 'Submit Adjustments');
+  dec.done = integritySet && qtySet && (!needsReason || dec.reason.length > 0);
 
-  if (successCount > 0) {
-    showToast(`${successCount} adjustment${successCount > 1 ? 's' : ''} saved`, 'success');
-    loadReconcile(); // reload with fresh data from server
+  document.getElementById('wc-card-' + i).classList.toggle('done', dec.done);
+  checkWCFinishReady();
+}
+
+function checkWCFinishReady() {
+  const allDone   = state.weeklyCheck.decisions.every(d => d.done);
+  const finishEl  = document.getElementById('wc-finish-area');
+  if (finishEl) finishEl.classList.toggle('hidden', !allDone);
+}
+
+async function submitWeeklyCheck() {
+  const { items, decisions } = state.weeklyCheck;
+  const btn = document.getElementById('btn-wc-finish');
+
+  const toSubmit = [];
+  items.forEach((item, i) => {
+    const dec     = decisions[i];
+    const physQty = dec.qtyMode === 'matches' ? item.qty : (dec.physicalQty ?? item.qty);
+    const variance = physQty - item.qty;
+    if (dec.integrityStatus === 'flagged' || variance !== 0) {
+      toSubmit.push({ item, dec, physQty, variance });
+    }
+  });
+
+  const label = toSubmit.length > 0 ? `Saving ${toSubmit.length} record(s)…` : 'Finishing…';
+  setLoading(btn, label);
+
+  let errorCount = 0;
+  for (const { item, dec, physQty } of toSubmit) {
+    const result = await api.post('reconcile', {
+      gtin:            item.gtin,
+      lot:             item.lot,
+      expiry:          item.expiry,
+      physicalCount:   physQty,
+      integrityStatus: dec.integrityStatus === 'flagged' ? 'Flagged' : 'OK',
+      reason:          dec.reason,
+      location:        item.location || ''
+    });
+    if (!result.success) {
+      errorCount++;
+      showToast('Error (' + esc(item.name || item.gtin) + '): ' + result.error, 'error');
+    }
   }
+
+  if (errorCount > 0) {
+    resetButton(btn, 'Finish Check');
+    return;
+  }
+
+  renderWCSummary(items, decisions, toSubmit);
+}
+
+function renderWCSummary(items, decisions, submitted) {
+  const container  = document.getElementById('wc-container');
+  const flagged    = submitted.filter(s => s.dec.integrityStatus === 'flagged');
+  const adjusted   = submitted.filter(s => s.variance !== 0);
+  const passed     = items.length - submitted.length;
+  const timeStr    = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+
+  const flagList = flagged.length === 0 ? '' : `
+    <div class="wc-summary-section">
+      <div class="wc-summary-section-title">Integrity Flags</div>
+      ${flagged.map(s => `
+        <div class="wc-summary-flag-item">
+          <span class="wc-summary-item-name">${esc(s.item.name || s.item.gtin)}</span>
+          ${s.dec.flagNote ? `<span class="wc-summary-note">${esc(s.dec.flagNote)}</span>` : ''}
+        </div>`).join('')}
+    </div>`;
+
+  const adjList = adjusted.length === 0 ? '' : `
+    <div class="wc-summary-section">
+      <div class="wc-summary-section-title">Quantity Adjustments</div>
+      ${adjusted.map(s => `
+        <div class="wc-summary-flag-item">
+          <span class="wc-summary-item-name">${esc(s.item.name || s.item.gtin)}</span>
+          <span class="wc-summary-variance ${s.variance > 0 ? 'pos' : 'neg'}">${s.variance > 0 ? '+' : ''}${s.variance}</span>
+        </div>`).join('')}
+    </div>`;
+
+  container.innerHTML = `
+    <div class="wc-summary">
+      <div class="wc-summary-title">Check Complete &mdash; ${esc(timeStr)}</div>
+      <div class="wc-summary-stats">
+        <div class="wc-stat"><span class="wc-stat-num">${items.length}</span><span class="wc-stat-lbl">Checked</span></div>
+        <div class="wc-stat ${flagged.length > 0 ? 'wc-stat-warn' : 'wc-stat-ok'}">
+          <span class="wc-stat-num">${flagged.length}</span><span class="wc-stat-lbl">Flagged</span>
+        </div>
+        <div class="wc-stat ${adjusted.length > 0 ? 'wc-stat-warn' : 'wc-stat-ok'}">
+          <span class="wc-stat-num">${adjusted.length}</span><span class="wc-stat-lbl">Adjusted</span>
+        </div>
+        <div class="wc-stat wc-stat-ok"><span class="wc-stat-num">${passed}</span><span class="wc-stat-lbl">All OK</span></div>
+      </div>
+      ${flagList}
+      ${adjList}
+      <button id="btn-wc-done" class="btn-primary">Done</button>
+    </div>`;
+
+  document.getElementById('btn-wc-done').addEventListener('click', renderWCIdle);
 }
 
 // =====================================================================

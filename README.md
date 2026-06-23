@@ -50,6 +50,7 @@ The Sheet must have exactly three tabs with these names (case-sensitive):
 | H | Last Action By | Who performed the action (optional) |
 | I | Min Qty | Per-item low-stock alert threshold (optional — leave blank to use global default) |
 | J | Location | Shelf/drawer/cart identifier, e.g. `Shelf 3 / Drawer B` — used to group the weekly checklist in walking-route order (optional) |
+| K | Unit | Unit of measure: `Box`, `Piece`, `Carton`, or any custom label — displayed next to Qty everywhere (optional) |
 
 ### `Archive`
 Same columns as Active Inventory (A–H), plus:
@@ -57,6 +58,7 @@ Same columns as Active Inventory (A–H), plus:
 |---|---|---|
 | I | Archived Date | When the row was moved here |
 | J | Archive Reason | e.g. "qty=0 and expired" |
+| K | Unit | Unit of measure carried over from Active Inventory at archive time |
 
 ### `Reconciliation Log`
 | Column | Header | Description |
@@ -134,3 +136,5 @@ The Web App URL does not change — no need to update `config.js`.
 - **Weekly Check audit trail:** only items where quantity differs or integrity is flagged are logged — items that pass generate no record. Every logged entry requires a written reason before the quantity is adjusted.
 - **Weekly Check — scanning is optional:** the checker can proceed through every item without scanning. The per-row scan button is available only when confirming which physical lot is being checked (e.g. two lots of the same item side by side).
 - **Weekly Check — location grouping:** items are ordered by their Location column value so the checker can walk one route without backtracking. Items with no location set appear in an "Unassigned" group at the bottom.
+- **Filters on Dashboard and Weekly Check:** a filter bar at the top of each screen narrows the visible items by Location (dropdown) and by status chips (Expiring Soon / Expired / Low Stock on Dashboard; Expiring Soon / Low Stock / Flagged on Weekly Check). Filters combine with AND; a Clear button appears whenever any filter is active.
+- **Unit of measure:** when logging stock in, the unit (Box / Piece / Carton / Other) is selectable from a dropdown and stored alongside the row. It is shown next to the quantity on the Dashboard, Weekly Check, and Scan Out screens. Existing rows with no unit set simply display the bare number until manually updated.

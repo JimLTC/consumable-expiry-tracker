@@ -55,6 +55,18 @@ function setupScanIn() {
 
   document.getElementById('btn-si-clear').addEventListener('click', clearScanInForm);
 
+  // Unit dropdown: reveal free-text field when "Other" is picked.
+  document.getElementById('si-unit').addEventListener('change', (e) => {
+    const otherField = document.getElementById('si-unit-other-field');
+    if (e.target.value === 'Other') {
+      otherField.classList.remove('hidden');
+      document.getElementById('si-unit-other').focus();
+    } else {
+      otherField.classList.add('hidden');
+      document.getElementById('si-unit-other').value = '';
+    }
+  });
+
   document.getElementById('form-scan-in').addEventListener('submit', async (e) => {
     e.preventDefault();
     const gtin   = v('si-gtin');
@@ -64,6 +76,7 @@ function setupScanIn() {
     const qty    = parseInt(document.getElementById('si-qty').value, 10);
     const minQty = document.getElementById('si-minqty').value.trim();
     const minQtyVal = minQty !== '' ? parseInt(minQty, 10) : null;
+    const unit   = readScanInUnit();
 
     if (!gtin) { showToast('GTIN / Ref is required', 'error'); return; }
     if (isNaN(qty) || qty < 1) { showToast('Quantity must be at least 1', 'error'); return; }
@@ -74,7 +87,7 @@ function setupScanIn() {
       warn.classList.remove('hidden');
       document.getElementById('btn-si-override-yes').onclick = () => {
         warn.classList.add('hidden');
-        submitScanIn(gtin, lot, expiry, qty, name, minQtyVal);
+        submitScanIn(gtin, lot, expiry, qty, name, minQtyVal, unit);
       };
       document.getElementById('btn-si-override-no').onclick = () => {
         warn.classList.add('hidden');
@@ -82,8 +95,15 @@ function setupScanIn() {
       return;
     }
 
-    await submitScanIn(gtin, lot, expiry, qty, name, minQtyVal);
+    await submitScanIn(gtin, lot, expiry, qty, name, minQtyVal, unit);
   });
+}
+
+/** Read the unit value: returns either the dropdown selection or, for "Other", the free-text value. */
+function readScanInUnit() {
+  const sel = document.getElementById('si-unit').value;
+  if (sel === 'Other') return document.getElementById('si-unit-other').value.trim();
+  return sel;
 }
 
 function fillScanInForm(parsed, rawText) {
@@ -97,19 +117,22 @@ function fillScanInForm(parsed, rawText) {
 }
 
 function clearScanInForm() {
-  ['si-gtin', 'si-lot', 'si-expiry', 'si-name', 'si-minqty'].forEach(id => {
+  ['si-gtin', 'si-lot', 'si-expiry', 'si-name', 'si-minqty', 'si-unit-other'].forEach(id => {
     document.getElementById(id).value = '';
   });
-  document.getElementById('si-qty').value = '1';
+  document.getElementById('si-qty').value  = '1';
+  document.getElementById('si-unit').value = '';
+  document.getElementById('si-unit-other-field').classList.add('hidden');
   document.getElementById('si-expiry-warning').classList.add('hidden');
 }
 
-async function submitScanIn(gtin, lot, expiry, qty, itemName, minQty = null) {
+async function submitScanIn(gtin, lot, expiry, qty, itemName, minQty = null, unit = '') {
   const btn = document.getElementById('btn-si-submit');
   setLoading(btn, 'Logging...');
 
   const payload = { gtin, lot, expiry, qty, itemName };
   if (minQty !== null && !isNaN(minQty)) payload.minQty = minQty;
+  if (unit) payload.unit = unit;
   const result = await api.post('scanIn', payload);
 
   resetButton(btn, 'Log Stock In');
@@ -214,6 +237,9 @@ function renderScanOutCard(item) {
   document.getElementById('so-qty').max = item.qty;
 
   const expiryLabel = formatExpiry(item.expiry);
+  const qtyStr      = formatQty(item.qty, item.unit);
+  const locLine     = item.location
+    ? `<div class="status-detail">Location: ${esc(item.location)}</div>` : '';
 
   if (item.expiry && item.expiry < today()) {
     card.className = 'card status-card status-expired';
@@ -221,21 +247,24 @@ function renderScanOutCard(item) {
       <div class="status-badge">EXPIRED</div>
       <div><strong>${esc(item.name || item.gtin)}</strong></div>
       <div class="status-detail">${esc(expiryLabel)}</div>
-      <div class="status-detail">Lot: ${esc(item.lot || '&mdash;')} &middot; Qty in stock: ${item.qty}</div>`;
+      <div class="status-detail">Lot: ${esc(item.lot || '&mdash;')} &middot; Qty in stock: ${qtyStr}</div>
+      ${locLine}`;
   } else if (item.expiry && daysLeft <= state.settings.expiryWarningDays) {
     card.className = 'card status-card status-expiring';
     card.innerHTML = `
       <div class="status-badge">EXPIRING SOON</div>
       <div><strong>${esc(item.name || item.gtin)}</strong></div>
       <div class="status-detail">${esc(expiryLabel)}</div>
-      <div class="status-detail">Lot: ${esc(item.lot || '&mdash;')} &middot; Qty in stock: ${item.qty}</div>`;
+      <div class="status-detail">Lot: ${esc(item.lot || '&mdash;')} &middot; Qty in stock: ${qtyStr}</div>
+      ${locLine}`;
   } else {
     card.className = 'card status-card status-ok';
     card.innerHTML = `
       <div class="status-badge">OK</div>
       <div><strong>${esc(item.name || item.gtin)}</strong></div>
       <div class="status-detail">${expiryLabel ? esc(expiryLabel) : 'No expiry date recorded'}</div>
-      <div class="status-detail">Lot: ${esc(item.lot || '&mdash;')} &middot; Qty in stock: ${item.qty}</div>`;
+      <div class="status-detail">Lot: ${esc(item.lot || '&mdash;')} &middot; Qty in stock: ${qtyStr}</div>
+      ${locLine}`;
   }
 }
 
@@ -304,6 +333,9 @@ async function loadDashboard() {
     content.innerHTML = '<p class="no-items">No items in inventory yet.</p>';
     return;
   }
+
+  state.dashboardItems = items;
+  state.dashboardFilters = { location: '', statuses: new Set() };
 
   const { expiryWarningDays: wDays, lowStockThreshold: lowQty } = state.settings;
   const todayStr = today();
@@ -403,6 +435,26 @@ async function loadDashboard() {
     </div>`;
   }
 
+  // ── Filter bar (Location dropdown + Status chips) ───────────────────
+  const uniqueLocs = uniqueLocations(items);
+  const locOptions = uniqueLocs.map(loc => {
+    const label = loc === '__unassigned__' ? '(Unassigned)' : loc;
+    const val   = loc === '__unassigned__' ? '__unassigned__' : loc;
+    return `<option value="${esc(val)}">${esc(label)}</option>`;
+  }).join('');
+  const filterBarHtml = `<div class="filter-bar" id="dash-filter-bar">
+    <select class="filter-location" id="dash-filter-loc">
+      <option value="">All locations</option>
+      ${locOptions}
+    </select>
+    <div class="filter-chips">
+      <button type="button" class="filter-chip" data-status="expiring">Expiring Soon</button>
+      <button type="button" class="filter-chip" data-status="expired">Expired</button>
+      <button type="button" class="filter-chip" data-status="low">Low Stock</button>
+    </div>
+    <button type="button" class="filter-clear hidden" id="dash-filter-clear">Clear</button>
+  </div>`;
+
   // ── Full inventory cards ─────────────────────────────────────────────
   const cards = items.map((item, idx) => {
     const threshold = item.minQty > 0 ? item.minQty : lowQty;
@@ -413,17 +465,21 @@ async function loadDashboard() {
     const badge    = expired
       ? '<span class="badge badge-expired">Expired</span>'
       : expiring ? '<span class="badge badge-expiring">Soon</span>' : '';
-    return `<div class="inv-card ${cls}">
+    const qtyDisplay = formatQty(item.qty, item.unit);
+    const locChip = item.location
+      ? `<div class="inv-card-loc">&#128205; ${esc(item.location)}</div>` : '';
+    return `<div class="inv-card ${cls}" data-card-idx="${idx}">
       <div class="inv-card-header">
         <span class="inv-card-name">${esc(item.name || item.gtin)}</span>
         ${badge}
       </div>
       <div class="inv-card-expiry">${esc(formatExpiry(item.expiry) || 'No expiry date')}</div>
       <div class="inv-card-meta">
-        <span>Qty: <strong class="${low ? 'inv-card-qty-low' : ''}">${item.qty}${low ? ' · LOW' : ''}</strong></span>
+        <span>Qty: <strong class="${low ? 'inv-card-qty-low' : ''}">${qtyDisplay}${low ? ' · LOW' : ''}</strong></span>
         ${item.lot    ? '<span>Lot: ' + esc(item.lot) + '</span>' : ''}
         ${item.gtin && item.name ? '<span class="mono" style="font-size:.7rem">' + esc(item.gtin) + '</span>' : ''}
       </div>
+      ${locChip}
       <div class="inv-card-minqty">
         <label for="mq-${idx}" style="white-space:nowrap">Min qty alert:</label>
         <input type="number" id="mq-${idx}" class="minqty-input" data-idx="${idx}"
@@ -436,12 +492,35 @@ async function loadDashboard() {
   const inventoryHtml = `<div class="panel">
     <div class="panel-header"><h3>All Inventory</h3></div>
     <div class="panel-body" style="padding:6px 16px 14px">
-      ${cards}
+      ${filterBarHtml}
+      <div id="dash-inv-list">${cards}</div>
+      <p class="no-items hidden" id="dash-no-matches">No items match the current filter.</p>
       <p class="small" style="margin-top:10px">Min Qty per item — blank uses global default (${lowQty}). Saves automatically.</p>
     </div>
   </div>`;
 
   content.innerHTML = kpiHtml + timelineHtml + chartHtml + inventoryHtml;
+
+  // Wire up filter bar
+  document.getElementById('dash-filter-loc').addEventListener('change', e => {
+    state.dashboardFilters.location = e.target.value;
+    applyDashboardFilters();
+  });
+  content.querySelectorAll('#dash-filter-bar .filter-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const key = chip.dataset.status;
+      const set = state.dashboardFilters.statuses;
+      if (set.has(key)) set.delete(key); else set.add(key);
+      chip.classList.toggle('selected', set.has(key));
+      applyDashboardFilters();
+    });
+  });
+  document.getElementById('dash-filter-clear').addEventListener('click', () => {
+    state.dashboardFilters = { location: '', statuses: new Set() };
+    document.getElementById('dash-filter-loc').value = '';
+    content.querySelectorAll('#dash-filter-bar .filter-chip').forEach(c => c.classList.remove('selected'));
+    applyDashboardFilters();
+  });
 
   content.querySelectorAll('.minqty-input').forEach(input => {
     const save = async () => {
@@ -458,6 +537,55 @@ async function loadDashboard() {
     };
     input.addEventListener('blur', save);
     input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
+  });
+}
+
+/** Apply current dashboard filters by toggling .hidden on each inventory card. */
+function applyDashboardFilters() {
+  const items   = state.dashboardItems || [];
+  const filters = state.dashboardFilters;
+  const { expiryWarningDays: wDays, lowStockThreshold: lowQty } = state.settings;
+  const todayStr = today();
+
+  const active = Boolean(filters.location) || filters.statuses.size > 0;
+  document.getElementById('dash-filter-clear').classList.toggle('hidden', !active);
+
+  let visibleCount = 0;
+  items.forEach((item, idx) => {
+    const card = document.querySelector(`.inv-card[data-card-idx="${idx}"]`);
+    if (!card) return;
+
+    let pass = true;
+    if (filters.location) {
+      const itemLoc = item.location || '__unassigned__';
+      if (itemLoc !== filters.location) pass = false;
+    }
+    if (pass && filters.statuses.size > 0) {
+      const threshold = item.minQty > 0 ? item.minQty : lowQty;
+      const expired  = item.expiry && item.expiry < todayStr;
+      const expiring = !expired && item.expiry && daysDiff(todayStr, item.expiry) <= wDays;
+      const low      = item.qty > 0 && item.qty <= threshold;
+      let any = false;
+      if (filters.statuses.has('expiring') && expiring) any = true;
+      if (filters.statuses.has('expired')  && expired)  any = true;
+      if (filters.statuses.has('low')      && low)      any = true;
+      if (!any) pass = false;
+    }
+    card.classList.toggle('hidden', !pass);
+    if (pass) visibleCount++;
+  });
+
+  document.getElementById('dash-no-matches').classList.toggle('hidden', visibleCount > 0);
+}
+
+/** Return sorted unique location keys from a list of items, with '__unassigned__' last. */
+function uniqueLocations(items) {
+  const set = new Set();
+  items.forEach(i => set.add(i.location ? i.location : '__unassigned__'));
+  return Array.from(set).sort((a, b) => {
+    if (a === '__unassigned__') return 1;
+    if (b === '__unassigned__') return -1;
+    return a.localeCompare(b);
   });
 }
 
@@ -505,6 +633,7 @@ async function loadWeeklyCheck() {
       done:            false
     }))
   };
+  state.wcFilters = { location: '', statuses: new Set() };
 
   renderWCChecklist();
 }
@@ -512,6 +641,25 @@ async function loadWeeklyCheck() {
 function renderWCChecklist() {
   const { items } = state.weeklyCheck;
   const container = document.getElementById('wc-container');
+
+  // Filter bar
+  const uniqueLocs = uniqueLocations(items);
+  const locOptions = uniqueLocs.map(loc => {
+    const label = loc === '__unassigned__' ? '(Unassigned)' : loc;
+    return `<option value="${esc(loc)}">${esc(label)}</option>`;
+  }).join('');
+  const filterBarHtml = `<div class="filter-bar" id="wc-filter-bar">
+    <select class="filter-location" id="wc-filter-loc">
+      <option value="">All locations</option>
+      ${locOptions}
+    </select>
+    <div class="filter-chips">
+      <button type="button" class="filter-chip" data-status="expiring">Expiring Soon</button>
+      <button type="button" class="filter-chip" data-status="low">Low Stock</button>
+      <button type="button" class="filter-chip" data-status="flagged">Flagged</button>
+    </div>
+    <button type="button" class="filter-clear hidden" id="wc-filter-clear">Clear</button>
+  </div>`;
 
   // Group items by location; unassigned goes last
   const groups = new Map();
@@ -527,10 +675,11 @@ function renderWCChecklist() {
     return a.localeCompare(b);
   });
 
-  let html = '';
+  let html = filterBarHtml;
+  html += '<p class="no-items hidden" id="wc-no-matches">No items match the current filter.</p>';
   for (const key of sortedKeys) {
     const label = key === '__unassigned__' ? 'Unassigned' : key;
-    html += `<div class="wc-location-group">
+    html += `<div class="wc-location-group" data-loc-key="${esc(key)}">
       <div class="wc-location-header">${esc(label)}<span class="wc-location-count">${groups.get(key).length}</span></div>
       ${groups.get(key).map(({ item, i }) => renderWCItemCard(item, i)).join('')}
     </div>`;
@@ -543,6 +692,83 @@ function renderWCChecklist() {
   container.innerHTML = html;
   items.forEach((_, i) => wireWCCard(i));
   document.getElementById('btn-wc-finish').addEventListener('click', submitWeeklyCheck);
+
+  // Wire filter bar
+  document.getElementById('wc-filter-loc').addEventListener('change', e => {
+    state.wcFilters.location = e.target.value;
+    applyWCFilters();
+  });
+  container.querySelectorAll('#wc-filter-bar .filter-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const key = chip.dataset.status;
+      const set = state.wcFilters.statuses;
+      if (set.has(key)) set.delete(key); else set.add(key);
+      chip.classList.toggle('selected', set.has(key));
+      applyWCFilters();
+    });
+  });
+  document.getElementById('wc-filter-clear').addEventListener('click', () => {
+    state.wcFilters = { location: '', statuses: new Set() };
+    document.getElementById('wc-filter-loc').value = '';
+    container.querySelectorAll('#wc-filter-bar .filter-chip').forEach(c => c.classList.remove('selected'));
+    applyWCFilters();
+  });
+}
+
+/** Show/hide WC cards based on current filters. Called on filter change AND on integrity change. */
+function applyWCFilters() {
+  const { items, decisions } = state.weeklyCheck;
+  const filters = state.wcFilters;
+  if (!filters) return;
+  const { expiryWarningDays: wDays, lowStockThreshold: lowQty } = state.settings;
+  const todayStr = today();
+
+  const active = Boolean(filters.location) || filters.statuses.size > 0;
+  const clearBtn = document.getElementById('wc-filter-clear');
+  if (clearBtn) clearBtn.classList.toggle('hidden', !active);
+
+  // Track which groups have any visible card
+  const groupVisible = new Map();
+
+  items.forEach((item, i) => {
+    const card = document.getElementById('wc-card-' + i);
+    if (!card) return;
+
+    let pass = true;
+    if (filters.location) {
+      const itemLoc = item.location || '__unassigned__';
+      if (itemLoc !== filters.location) pass = false;
+    }
+    if (pass && filters.statuses.size > 0) {
+      const threshold = item.minQty > 0 ? item.minQty : lowQty;
+      const expired  = item.expiry && item.expiry < todayStr;
+      const expiring = !expired && item.expiry && daysDiff(todayStr, item.expiry) <= wDays;
+      const low      = item.qty > 0 && item.qty <= threshold;
+      const flagged  = decisions[i] && decisions[i].integrityStatus === 'flagged';
+      let any = false;
+      if (filters.statuses.has('expiring') && expiring) any = true;
+      if (filters.statuses.has('low')      && low)      any = true;
+      if (filters.statuses.has('flagged')  && flagged)  any = true;
+      if (!any) pass = false;
+    }
+    card.classList.toggle('hidden', !pass);
+
+    const key = item.location || '__unassigned__';
+    if (pass) groupVisible.set(key, true);
+    else if (!groupVisible.has(key)) groupVisible.set(key, false);
+  });
+
+  // Hide whole groups when none of their cards are visible
+  let anyVisible = false;
+  document.querySelectorAll('.wc-location-group').forEach(group => {
+    const key = group.dataset.locKey;
+    const visible = groupVisible.get(key) === true;
+    group.classList.toggle('hidden', !visible);
+    if (visible) anyVisible = true;
+  });
+
+  const noMatch = document.getElementById('wc-no-matches');
+  if (noMatch) noMatch.classList.toggle('hidden', anyVisible);
 }
 
 function renderWCItemCard(item, i) {
@@ -552,6 +778,9 @@ function renderWCItemCard(item, i) {
   const badgeCls  = expired ? 'badge-expired' : expiring ? 'badge-expiring' : '';
   const expiryStr = formatExpiry(item.expiry);
   const borderCls = expired ? 'wc-item-card-expired' : expiring ? 'wc-item-card-expiring' : '';
+  const qtyStr    = formatQty(item.qty, item.unit);
+  const locLine   = item.location
+    ? `<div class="wc-item-loc">&#128205; ${esc(item.location)}</div>` : '';
 
   return `<div class="wc-item-card ${borderCls}" id="wc-card-${i}">
     <div class="wc-item-header">
@@ -559,10 +788,11 @@ function renderWCItemCard(item, i) {
       ${badgeCls ? `<span class="badge ${badgeCls}">${expired ? 'Expired' : 'Soon'}</span>` : ''}
     </div>
     <div class="wc-item-meta">
-      Qty: <strong>${item.qty}</strong>
+      Qty: <strong>${qtyStr}</strong>
       ${item.lot    ? ' &middot; Lot ' + esc(item.lot)    : ''}
       ${expiryStr   ? ' &middot; ' + esc(expiryStr)       : ''}
     </div>
+    ${locLine}
 
     <div class="wc-integrity-row">
       <span class="wc-row-label">Integrity</span>
@@ -617,6 +847,10 @@ function wireWCCard(i) {
         state.weeklyCheck.decisions[i].flagNote = '';
       }
       updateWCItemDone(i);
+      // If the user is filtering by "Flagged", flipping the status may add/remove this card.
+      if (state.wcFilters && state.wcFilters.statuses && state.wcFilters.statuses.has('flagged')) {
+        applyWCFilters();
+      }
     });
   });
 
@@ -861,6 +1095,13 @@ function formatExpiry(isoDate) {
   if (days <= 30) return `Expires in ${days} days`;
   const d = new Date(isoDate + 'T00:00:00');
   return 'Expires ' + d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** Format a quantity with its unit label. Falls back to bare number if unit is blank. */
+function formatQty(qty, unit) {
+  const q = String(qty);
+  const u = (unit || '').trim();
+  return u ? `${q} ${esc(u)}` : q;
 }
 
 // Prevent XSS when inserting dynamic content into innerHTML

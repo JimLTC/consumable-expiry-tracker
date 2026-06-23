@@ -198,6 +198,26 @@ main {
   box-shadow: 0 0 0 3px var(--accent-bg);
 }
 
+.field select {
+  width: 100%;
+  padding: 10px 36px 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  font-size: .95rem;
+  font-family: var(--sans);
+  color: var(--text);
+  background: var(--bg2) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%239ca3af' d='M6 8L0 0h12z'/></svg>") no-repeat right 12px center;
+  background-size: 10px 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+.field select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
 /* =====================================================================
    BUTTONS
    ===================================================================== */
@@ -689,6 +709,14 @@ main {
 }
 .inv-card-qty-low { color: var(--orange); font-weight: 700; }
 
+.inv-card-loc {
+  font-size: .72rem;
+  color: var(--text2);
+  font-family: var(--mono);
+  margin-top: 6px;
+  letter-spacing: -.01em;
+}
+
 .inv-card-minqty {
   display: flex;
   align-items: center;
@@ -828,7 +856,15 @@ main {
 .wc-item-meta {
   font-size: .78rem;
   color: var(--text3);
+  margin-bottom: 4px;
+}
+
+.wc-item-loc {
+  font-size: .72rem;
+  color: var(--text2);
+  font-family: var(--mono);
   margin-bottom: 10px;
+  letter-spacing: -.01em;
 }
 
 /* ── Integrity & Quantity rows ─────────────────────────────────────── */
@@ -1040,6 +1076,78 @@ main {
 .wc-summary-variance       { font-weight: 700; font-family: var(--mono); }
 .wc-summary-variance.pos   { color: var(--green); }
 .wc-summary-variance.neg   { color: var(--red);   }
+
+/* =====================================================================
+   FILTER BAR (Dashboard + Weekly Check)
+   ===================================================================== */
+
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0 12px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.filter-bar .filter-location {
+  flex: 1 1 140px;
+  min-width: 0;
+  padding: 7px 30px 7px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: 7px;
+  font-size: .82rem;
+  font-family: var(--sans);
+  color: var(--text);
+  background: var(--bg2) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%239ca3af' d='M6 8L0 0h12z'/></svg>") no-repeat right 10px center;
+  background-size: 9px 5px;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+.filter-bar .filter-location:focus { outline: none; border-color: var(--accent); }
+
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.filter-chip {
+  padding: 6px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 18px;
+  background: var(--bg2);
+  color: var(--text2);
+  font-size: .76rem;
+  font-weight: 600;
+  font-family: var(--sans);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.filter-chip:active { opacity: .7; }
+.filter-chip.selected {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.filter-clear {
+  margin-left: auto;
+  padding: 5px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 18px;
+  background: var(--bg3);
+  color: var(--text2);
+  font-size: .74rem;
+  font-weight: 600;
+  font-family: var(--sans);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.filter-clear:hover { background: #e4e9f4; border-color: var(--border2); }
 
 /* =====================================================================
    UTILITY

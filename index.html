@@ -6,10 +6,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Consumables Tracker</title>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css">
-  <!-- html5-qrcode: handles camera access and barcode/QR/DataMatrix decoding -->
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
 
@@ -24,34 +22,30 @@
   <main>
 
     <!-- ================================================================
-         TAB: SCAN IN
-         Log new stock into the system. Barcode auto-fills fields where
-         possible; user confirms and submits.
+         TAB: STOCK IN
+         Select from the Item Catalog, then fill in lot / expiry / qty.
          ================================================================ -->
     <section id="tab-scan-in" class="tab active">
-      <h2>Scan In</h2>
-      <p class="helper-text">Restock an existing item by searching below, or scan / type a new one.</p>
+      <h2>Stock In</h2>
+      <p class="helper-text">Search the Item Catalog to select what you're stocking in.</p>
 
-      <!-- Restock search: search existing items to skip re-typing name and ref -->
-      <div class="si-restock-section">
-        <input type="search" id="si-restock-search" class="si-search-input" placeholder="Search existing item by name or ref&hellip;" autocomplete="off">
-        <div id="si-restock-list" class="hidden"></div>
-        <div id="si-restock-selected" class="hidden si-restock-selected-bar">
-          <span class="si-restock-selected-name" id="si-restock-name"></span>
-          <button type="button" id="btn-si-restock-clear" class="btn-text">&#215; Change</button>
+      <div class="catalog-picker">
+        <div class="search-input-wrap">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input type="search" id="si-catalog-search" class="search-input" placeholder="Search by item name or REF&hellip;" autocomplete="off">
+        </div>
+        <div id="si-catalog-list" class="search-results hidden"></div>
+        <div id="si-catalog-selected" class="selected-chip hidden">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+          <span id="si-catalog-selected-name"></span>
+          <button type="button" id="btn-si-catalog-clear" class="chip-clear-btn">&times; Change</button>
         </div>
       </div>
 
-      <button id="btn-scan-in-start" class="btn-primary btn-scan">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-        Scan Barcode
-      </button>
-
       <form id="form-scan-in" class="card">
-        <div class="field">
-          <label for="si-gtin">GTIN / Ref *</label>
-          <input type="text" id="si-gtin" placeholder="Product ID (filled by scanner)" autocomplete="off" inputmode="text">
-        </div>
+        <input type="hidden" id="si-ref">
+        <input type="hidden" id="si-name">
+
         <div class="field">
           <label for="si-lot">Lot / Batch</label>
           <input type="text" id="si-lot" placeholder="Leave blank if not on label" autocomplete="off">
@@ -61,33 +55,10 @@
           <input type="date" id="si-expiry">
         </div>
         <div class="field">
-          <label for="si-name">Item Name</label>
-          <input type="text" id="si-name" placeholder="e.g. Drill Bit 5mm, Cortical Screw 3.5x20" autocomplete="off">
-        </div>
-        <div class="field">
-          <label for="si-unit">Unit</label>
-          <select id="si-unit">
-            <option value="">— Not set —</option>
-            <option value="Box">Box</option>
-            <option value="Piece">Piece</option>
-            <option value="Carton">Carton</option>
-            <option value="Other">Other&hellip;</option>
-          </select>
-        </div>
-        <div class="field hidden" id="si-unit-other-field">
-          <label for="si-unit-other">Specify unit</label>
-          <input type="text" id="si-unit-other" placeholder="e.g. Pack, Vial, Pair" autocomplete="off">
-        </div>
-        <div class="field">
-          <label for="si-qty">Quantity *</label>
+          <label for="si-qty">Quantity (pieces) *</label>
           <input type="number" id="si-qty" value="1" min="1" max="9999" inputmode="numeric">
         </div>
-        <div class="field">
-          <label for="si-minqty">Low-stock alert when qty falls to (optional)</label>
-          <input type="number" id="si-minqty" placeholder="e.g. 3 — leave blank to use global default" min="0" inputmode="numeric">
-        </div>
 
-        <!-- Shown only when expiry date is already in the past -->
         <div id="si-expiry-warning" class="warning hidden">
           &#9888; This expiry date is already in the past. Are you sure you want to log it?
           <div class="button-row">
@@ -102,31 +73,29 @@
     </section>
 
     <!-- ================================================================
-         TAB: SCAN OUT
-         Check an item before use. Shows expiry status, then decrements.
+         TAB: STOCK OUT
+         Select an item manually, confirm use, decrement stock.
          ================================================================ -->
     <section id="tab-scan-out" class="tab">
-      <h2>Scan Out</h2>
-      <p class="helper-text">Select an item to use, or scan its barcode.</p>
+      <h2>Stock Out</h2>
+      <p class="helper-text">Search and select the item you are using.</p>
 
-      <!-- Default: manual selection panel -->
       <div id="so-manual-panel">
-        <input type="search" id="so-search" class="so-search-input" placeholder="Search by name or ref&hellip;" autocomplete="off">
+        <div class="search-input-wrap">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          <input type="search" id="so-search" class="search-input" placeholder="Search by name or ref&hellip;" autocomplete="off">
+        </div>
         <div id="so-item-list"><p class="no-items">Loading&hellip;</p></div>
         <div id="so-lot-step" class="hidden">
-          <button type="button" id="btn-so-lot-back" class="so-lot-step-back">&#8592; Back to item list</button>
+          <button type="button" id="btn-so-lot-back" class="so-lot-step-back">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M19 12H5m0 0 7 7m-7-7 7-7"/></svg>
+            Back to item list
+          </button>
           <p class="so-lot-step-title">Select a lot to use:</p>
           <div id="so-lot-list"></div>
         </div>
       </div>
 
-      <!-- Secondary: camera scan -->
-      <button id="btn-scan-out-start" class="btn-secondary btn-scan" style="margin-top:10px">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-        Or scan a barcode
-      </button>
-
-      <!-- Status card shown after item selection -->
       <div id="scan-out-result" class="hidden">
         <div id="so-status-card" class="card status-card"></div>
         <form id="form-scan-out" class="card hidden">
@@ -146,15 +115,17 @@
          ================================================================ -->
     <section id="tab-dashboard" class="tab">
       <h2>Dashboard</h2>
-      <button id="btn-refresh-dashboard" class="btn-secondary">&#8635; Refresh</button>
+      <button id="btn-refresh-dashboard" class="btn-secondary btn-refresh">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+        Refresh
+      </button>
       <div id="dashboard-summary" class="summary-row hidden"></div>
       <div id="dashboard-content"></div>
     </section>
 
     <!-- ================================================================
          TAB: WEEKLY CHECK
-         Walk through all inventory grouped by shelf/location. Confirm
-         integrity and quantity for each item; logs only mismatches/flags.
+         Walk through all catalog items shelf-by-shelf.
          ================================================================ -->
     <section id="tab-reconcile" class="tab">
       <h2>Weekly Check</h2>
@@ -163,7 +134,6 @@
 
     <!-- ================================================================
          TAB: SETTINGS
-         Expiry warning window and low-stock threshold (saved locally).
          ================================================================ -->
     <section id="tab-settings" class="tab">
       <h2>Settings</h2>
@@ -186,43 +156,65 @@
   </main>
 
   <!-- ================================================================
-       BOTTOM NAVIGATION BAR
+       BOTTOM NAVIGATION BAR — Material style
        ================================================================ -->
   <nav class="bottom-nav">
-    <button class="nav-btn active" data-tab="scan-in">
-      <span class="nav-icon">&#11014;</span>
-      <span>In</span>
-    </button>
-    <button class="nav-btn" data-tab="scan-out">
-      <span class="nav-icon">&#11015;</span>
-      <span>Out</span>
-    </button>
-    <button class="nav-btn" data-tab="dashboard">
-      <span class="nav-icon">&#128203;</span>
-      <span>Dashboard</span>
-    </button>
-    <button class="nav-btn" data-tab="reconcile">
-      <span class="nav-icon">&#9989;</span>
-      <span>Weekly</span>
-    </button>
-    <button class="nav-btn" data-tab="settings">
-      <span class="nav-icon">&#9881;</span>
-      <span>Settings</span>
-    </button>
-  </nav>
 
-  <!-- ================================================================
-       SCANNER OVERLAY (shown when camera is active)
-       ================================================================ -->
-  <div id="scanner-overlay" class="hidden">
-    <div class="scanner-card">
-      <div class="scanner-spinner"></div>
-      <h3 id="scanner-title">Processing&hellip;</h3>
-      <p class="scanner-hint">Reading barcode from photo</p>
-      <button id="btn-stop-scan" class="btn-secondary">Cancel</button>
-    </div>
-    <div id="reader" aria-hidden="true"></div>
-  </div>
+    <button class="nav-btn active" data-tab="scan-in">
+      <span class="nav-icon-pill">
+        <!-- Stock In: tray + up arrow -->
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+          <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+        </svg>
+      </span>
+      <span class="nav-label">In</span>
+    </button>
+
+    <button class="nav-btn" data-tab="scan-out">
+      <span class="nav-icon-pill">
+        <!-- Stock Out: tray + down arrow -->
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="8 17 12 21 16 17"/><line x1="12" y1="12" x2="12" y2="21"/>
+          <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/>
+        </svg>
+      </span>
+      <span class="nav-label">Out</span>
+    </button>
+
+    <button class="nav-btn" data-tab="dashboard">
+      <span class="nav-icon-pill">
+        <!-- Dashboard: 4-square grid -->
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+          <rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+        </svg>
+      </span>
+      <span class="nav-label">Dashboard</span>
+    </button>
+
+    <button class="nav-btn" data-tab="reconcile">
+      <span class="nav-icon-pill">
+        <!-- Weekly check: clipboard with tick -->
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+        </svg>
+      </span>
+      <span class="nav-label">Weekly</span>
+    </button>
+
+    <button class="nav-btn" data-tab="settings">
+      <span class="nav-icon-pill">
+        <!-- Settings: gear -->
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </span>
+      <span class="nav-label">Settings</span>
+    </button>
+
+  </nav>
 
   <!-- ================================================================
        TOAST NOTIFICATION
@@ -232,7 +224,6 @@
   <!-- Scripts — load config first so API_URL is defined before api.js runs -->
   <script src="js/config.js"></script>
   <script src="js/api.js"></script>
-  <script src="js/scanner.js"></script>
   <script src="js/app.js"></script>
 
 </body>

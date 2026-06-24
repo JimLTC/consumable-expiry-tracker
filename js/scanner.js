@@ -1,15 +1,7 @@
-// =====================================================================
-// Camera scanner (html5-qrcode) + GS1 Data Matrix parser
-// =====================================================================
+// Scanner module removed — barcode scanning replaced by catalog search picker.
+// This file is kept as an empty stub to avoid 404s from cached page loads.
 
-/**
- * Open the native iOS camera as a still-photo picker, then decode the barcode
- * from the captured image. Uses <input capture="environment"> which bypasses
- * WebRTC entirely — no getUserMedia, no black screen, no permission conflicts.
- * @param {string}   title    Heading shown in the "Processing…" overlay
- * @param {Function} onResult Called with (rawText, parsedGS1) when a code is read
- */
-function startScanner(title, onResult) {
+function startScanner(title, onResult) { /* removed */ }
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/*';

@@ -587,12 +587,11 @@ async function loadDashboard() {
   // KPI counts (per group)
   let expiredCount = 0, soonCount = 0, lowCount = 0;
   state.dashboardGroups.forEach(g => {
-    const threshold   = Math.max(...g.lots.map(l => l.minQty || 0)) || lowQty;
     const anyExpired  = g.lots.some(l => l.expiry && l.expiry < todayStr);
     const anyExpiring = !anyExpired && g.lots.some(l => l.expiry && daysDiff(todayStr, l.expiry) <= wDays);
     if (anyExpired)  expiredCount++;
     else if (anyExpiring) soonCount++;
-    if (g.totalQty > 0 && g.totalQty <= threshold) lowCount++;
+    if (g.totalQty > 0 && g.totalQty <= lowQty) lowCount++;
   });
 
   // ── KPI cards ───────────────────────────────────────────────────────
@@ -695,10 +694,9 @@ async function loadDashboard() {
 
   // ── Full inventory cards (one per GTIN group) ────────────────────────
   const cards = state.dashboardGroups.map((g, gIdx) => {
-    const threshold   = Math.max(...g.lots.map(l => l.minQty || 0)) || lowQty;
     const anyExpired  = g.lots.some(l => l.expiry && l.expiry < todayStr);
     const anyExpiring = !anyExpired && g.lots.some(l => l.expiry && daysDiff(todayStr, l.expiry) <= wDays);
-    const isLow       = g.totalQty > 0 && g.totalQty <= threshold;
+    const isLow       = g.totalQty > 0 && g.totalQty <= lowQty;
     const cls         = anyExpired ? 'inv-card-expired' : anyExpiring ? 'inv-card-expiring' : 'inv-card-ok';
     const badge       = anyExpired
       ? '<span class="badge badge-expired">Expired</span>'
@@ -718,21 +716,11 @@ async function loadDashboard() {
           ${lot.lot    ? `<span class="inv-lot-field"><span class="inv-lot-label">LOT</span><span class="inv-lot-value">${esc(lot.lot)}</span></span>` : ''}
           ${lot.expiry ? `<span class="inv-lot-field"><span class="inv-lot-label">Expiry</span><span class="inv-lot-value ${ec}">${esc(formatExpiry(lot.expiry))}</span></span>` : ''}
           <span class="inv-lot-field"><span class="inv-lot-label">Qty</span><span class="inv-lot-value">${formatQty(lot.qty, lot.unit)}</span></span>
-          <span class="inv-lot-field"><span class="inv-lot-label">Min&nbsp;Qty</span>
-            <input type="number" class="minqty-input" data-gtin="${esc(lot.gtin)}" data-lot="${esc(lot.lot || '')}" data-expiry="${esc(lot.expiry || '')}"
-                   value="${lot.minQty > 0 ? lot.minQty : ''}" placeholder="${lowQty}" min="0">
-          </span>
         </div>
       </div>`;
     }).join('');
 
-    const expandBtn     = multiLot ? `<button type="button" class="inv-lot-expand-btn" data-gidx="${gIdx}">${g.lots.length} lots &#9660;</button>` : '';
-    const singleMinQty  = !multiLot ? `<div class="inv-card-minqty">
-      <label style="white-space:nowrap">Min qty alert:</label>
-      <input type="number" class="minqty-input" data-gtin="${esc(g.gtin)}" data-lot="${esc(firstLot?.lot || '')}" data-expiry="${esc(firstLot?.expiry || '')}"
-             value="${(firstLot?.minQty || 0) > 0 ? firstLot.minQty : ''}" placeholder="${lowQty}" min="0"
-             title="Alert threshold (blank = global default of ${lowQty})">
-    </div>` : '';
+    const expandBtn = multiLot ? `<button type="button" class="inv-lot-expand-btn" data-gidx="${gIdx}">${g.lots.length} lots &#9660;</button>` : '';
 
     return `<div class="inv-card ${cls}" data-group-idx="${gIdx}">
       <div class="inv-card-header">
@@ -747,7 +735,6 @@ async function loadDashboard() {
         ${!multiLot && firstLot?.lot ? '<span>LOT: ' + esc(firstLot.lot) + '</span>' : ''}
       </div>
       ${locChip}
-      ${singleMinQty}
       ${multiLot ? `<div class="inv-lots-list hidden" id="inv-lots-${gIdx}">${lotsHtml}</div>` : ''}
     </div>`;
   }).join('');
@@ -758,7 +745,6 @@ async function loadDashboard() {
       ${filterBarHtml}
       <div id="dash-inv-list">${cards}</div>
       <p class="no-items hidden" id="dash-no-matches">No items match the current filter.</p>
-      <p class="small" style="margin-top:10px">Min Qty per item — blank uses global default (${lowQty}). Saves automatically.</p>
     </div>
   </div>`;
 
@@ -783,22 +769,6 @@ async function loadDashboard() {
     document.getElementById('dash-filter-loc').value = '';
     content.querySelectorAll('#dash-filter-bar .filter-chip').forEach(c => c.classList.remove('selected'));
     applyDashboardFilters();
-  });
-
-  content.querySelectorAll('.minqty-input').forEach(input => {
-    const save = async () => {
-      const gtin   = input.dataset.gtin;
-      const lot    = input.dataset.lot;
-      const expiry = input.dataset.expiry;
-      const val    = input.value.trim();
-      const minQty = val === '' ? 0 : parseInt(val, 10);
-      if (isNaN(minQty) || minQty < 0) { showToast('Min qty must be 0 or higher', 'error'); return; }
-      const result = await api.post('setMinQty', { gtin, lot, expiry, minQty });
-      if (result.success) showToast('Min qty saved', 'success');
-      else showToast('Error: ' + result.error, 'error');
-    };
-    input.addEventListener('blur', save);
-    input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
   });
 
   content.querySelectorAll('.inv-lot-expand-btn').forEach(btn => {
@@ -835,10 +805,9 @@ function applyDashboardFilters() {
       if (!hasLoc) pass = false;
     }
     if (pass && filters.statuses.size > 0) {
-      const threshold   = Math.max(...g.lots.map(l => l.minQty || 0)) || lowQty;
       const anyExpired  = g.lots.some(l => l.expiry && l.expiry < todayStr);
       const anyExpiring = !anyExpired && g.lots.some(l => l.expiry && daysDiff(todayStr, l.expiry) <= wDays);
-      const isLow       = g.totalQty > 0 && g.totalQty <= threshold;
+      const isLow       = g.totalQty > 0 && g.totalQty <= lowQty;
       let any = false;
       if (filters.statuses.has('expiring') && anyExpiring) any = true;
       if (filters.statuses.has('expired')  && anyExpired)  any = true;
@@ -867,6 +836,8 @@ function uniqueLocations(items) {
 // WEEKLY CHECK
 // =====================================================================
 
+const SPEECH_SUPPORTED = 'SpeechRecognition' in window || 'webkitSpeechRecognition' in window;
+
 function setupReconcile() {
   renderWCIdle();
 }
@@ -874,7 +845,7 @@ function setupReconcile() {
 function renderWCIdle() {
   const container = document.getElementById('wc-container');
   container.innerHTML = `
-    <p class="helper-text">Walk through all items shelf-by-shelf. Confirm integrity and quantities — scanning is optional.</p>
+    <p class="helper-text">Walk through all items shelf-by-shelf, driven by the Item Catalog. Every known item appears even at zero stock.</p>
     <button id="btn-wc-start" class="btn-primary">Start Weekly Check</button>
   `;
   document.getElementById('btn-wc-start').addEventListener('click', loadWeeklyCheck);
@@ -882,26 +853,65 @@ function renderWCIdle() {
 
 async function loadWeeklyCheck() {
   const container = document.getElementById('wc-container');
-  container.innerHTML = '<p class="no-items">Loading inventory&hellip;</p>';
+  container.innerHTML = '<p class="no-items">Loading&hellip;</p>';
 
-  const result = await api.get('getInventory');
-  if (!result.success) {
-    container.innerHTML = `<p class="no-items">Error: ${esc(result.error)}</p>`;
+  const [catalogResult, inventoryResult] = await Promise.all([
+    api.get('getCatalog'),
+    api.get('getInventory')
+  ]);
+
+  if (!catalogResult.success) {
+    container.innerHTML = `<p class="no-items">Error loading catalog: ${esc(catalogResult.error)}</p>`;
+    return;
+  }
+  if (!inventoryResult.success) {
+    container.innerHTML = `<p class="no-items">Error loading inventory: ${esc(inventoryResult.error)}</p>`;
     return;
   }
 
-  const items = result.items || [];
-  if (items.length === 0) {
-    container.innerHTML = '<p class="no-items">No items in inventory.</p>';
+  const catalogItems = catalogResult.items || [];
+  if (catalogItems.length === 0) {
+    container.innerHTML = '<p class="no-items">Item Catalog is empty — add items to the Catalog sheet first.</p>';
     return;
   }
+  const inventoryItems = inventoryResult.items || [];
+
+  // Build Map of ref → [lot objects] from inventory
+  const invByRef = new Map();
+  inventoryItems.forEach(item => {
+    const ref = (item.gtin || '').trim();
+    if (!invByRef.has(ref)) invByRef.set(ref, []);
+    invByRef.get(ref).push(item);
+  });
+
+  // Build joined array and flat lots array
+  const joined   = [];
+  const flatLots = [];
+
+  catalogItems.forEach((catalogItem, jiIdx) => {
+    const lots = invByRef.get(catalogItem.ref) || [];
+    lots.sort((a, b) => {
+      if (!a.expiry && !b.expiry) return 0;
+      if (!a.expiry) return 1;
+      if (!b.expiry) return -1;
+      return a.expiry.localeCompare(b.expiry);
+    });
+    const totalPieces = lots.reduce((sum, lot) => sum + (lot.qty || 0), 0);
+    lots.forEach(lot => {
+      lot._flatIdx = flatLots.length;
+      lot._jiIdx   = jiIdx;
+      flatLots.push(lot);
+    });
+    joined.push({ catalogItem, lots, totalPieces });
+  });
 
   state.weeklyCheck = {
-    items,
-    decisions: items.map(() => ({
-      integrityStatus: null,   // null | 'ok' | 'flagged'
+    joined,
+    items:     flatLots,
+    decisions: flatLots.map(() => ({
+      integrityStatus: null,
       flagNote:        '',
-      qtyMode:         null,   // null | 'matches' | 'adjusted'
+      qtyMode:         null,
       physicalQty:     null,
       reason:          '',
       done:            false
@@ -913,12 +923,18 @@ async function loadWeeklyCheck() {
 }
 
 function renderWCChecklist() {
-  const { items } = state.weeklyCheck;
+  const { joined, items } = state.weeklyCheck;
   const container = document.getElementById('wc-container');
 
-  // Filter bar
-  const uniqueLocs = uniqueLocations(items);
-  const locOptions = uniqueLocs.map(loc => {
+  // Build sorted unique catalog locations
+  const catalogLocs = new Set();
+  joined.forEach(ji => catalogLocs.add(ji.catalogItem.location || '__unassigned__'));
+  const sortedLocKeys = Array.from(catalogLocs).sort((a, b) => {
+    if (a === '__unassigned__') return 1;
+    if (b === '__unassigned__') return -1;
+    return a.localeCompare(b);
+  });
+  const locOptions = sortedLocKeys.map(loc => {
     const label = loc === '__unassigned__' ? '(Unassigned)' : loc;
     return `<option value="${esc(loc)}">${esc(label)}</option>`;
   }).join('');
@@ -929,66 +945,74 @@ function renderWCChecklist() {
     </select>
     <div class="filter-chips">
       <button type="button" class="filter-chip" data-status="expiring">Expiring Soon</button>
-      <button type="button" class="filter-chip" data-status="low">Low Stock</button>
+      <button type="button" class="filter-chip" data-status="below-norm">Below Norm</button>
       <button type="button" class="filter-chip" data-status="flagged">Flagged</button>
     </div>
     <button type="button" class="filter-clear hidden" id="wc-filter-clear">Clear</button>
   </div>`;
 
-  // Group items by location; unassigned goes last
-  const groups = new Map();
-  items.forEach((item, i) => {
-    const key = (item.location && item.location.trim()) || '__unassigned__';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push({ item, i });
+  // Group catalog items by location
+  const locationGroups = new Map();
+  joined.forEach((ji, jiIdx) => {
+    const loc = ji.catalogItem.location || '__unassigned__';
+    if (!locationGroups.has(loc)) locationGroups.set(loc, []);
+    locationGroups.get(loc).push({ ji, jiIdx });
   });
 
-  const sortedKeys = Array.from(groups.keys()).sort((a, b) => {
-    if (a === '__unassigned__') return 1;
-    if (b === '__unassigned__') return -1;
-    return a.localeCompare(b);
-  });
+  let html = filterBarHtml + '<p class="no-items hidden" id="wc-no-matches">No items match the current filter.</p>';
 
-  let html = filterBarHtml;
-  html += '<p class="no-items hidden" id="wc-no-matches">No items match the current filter.</p>';
-  for (const key of sortedKeys) {
-    const locationItems = groups.get(key);
-    const label = key === '__unassigned__' ? 'Unassigned' : key;
+  for (const locKey of sortedLocKeys) {
+    const locItems = locationGroups.get(locKey);
+    if (!locItems) continue;
+    const label     = locKey === '__unassigned__' ? 'Unassigned' : locKey;
+    const totalLots = locItems.reduce((n, { ji }) => n + ji.lots.length, 0);
 
-    // Sub-group by GTIN within this location
-    const gtinMap = new Map();
-    locationItems.forEach(({ item, i }) => {
-      if (!gtinMap.has(item.gtin)) {
-        gtinMap.set(item.gtin, { gtin: item.gtin, name: item.name || item.gtin, lots: [], totalQty: 0, soonestExpiry: null, unit: item.unit });
-      }
-      const sg = gtinMap.get(item.gtin);
-      sg.lots.push({ item, i });
-      sg.totalQty += item.qty;
-      if (item.expiry && (!sg.soonestExpiry || item.expiry < sg.soonestExpiry)) sg.soonestExpiry = item.expiry;
-      if (!sg.name && item.name) sg.name = item.name;
-    });
+    let locHtml = '';
+    for (const { ji, jiIdx } of locItems) {
+      const { catalogItem, lots, totalPieces } = ji;
+      const normPieces   = catalogItem.norm * catalogItem.piecesPerUnit;
+      const normBadgeCls = normPieces <= 0 ? '' :
+        totalPieces >= normPieces ? 'norm-ok' :
+        totalPieces === 0         ? 'norm-critical' : 'norm-low';
+      const normLabel = normPieces > 0
+        ? (totalPieces >= normPieces ? 'OK' : totalPieces === 0 ? 'Critical' : 'Low')
+        : '';
+      const piecesDisplay = fmtPieces(totalPieces, catalogItem.orderingUnit, catalogItem.piecesPerUnit);
+      const normDisplay   = catalogItem.norm > 0
+        ? `Norm: ${catalogItem.norm} ${catalogItem.orderingUnit}`
+        : '';
 
-    const todayForWC = today();
-    const gtinGroupsHtml = Array.from(gtinMap.values()).map(sg => {
-      const anyExpired  = sg.lots.some(({ item }) => item.expiry && item.expiry < todayForWC);
-      const anyExpiring = !anyExpired && sg.lots.some(({ item }) => item.expiry && daysDiff(todayForWC, item.expiry) <= (state.settings.expiryWarningDays || 14));
-      const hdrBadge    = anyExpired
+      const todayNow    = today();
+      const anyExpired  = lots.some(l => l.expiry && l.expiry < todayNow);
+      const anyExpiring = !anyExpired && lots.some(l => l.expiry && daysDiff(todayNow, l.expiry) <= (state.settings.expiryWarningDays || 14));
+      const expiryBadge = anyExpired
         ? '<span class="badge badge-expired">Expired</span>'
         : anyExpiring ? '<span class="badge badge-expiring">Soon</span>' : '';
-      const qtyStr = formatQty(sg.totalQty, sg.unit);
-      return `<div class="wc-gtin-group" data-gtin="${esc(sg.gtin)}">
-        <div class="wc-gtin-header">
-          <span class="wc-gtin-name">${esc(sg.name)}</span>
-          ${hdrBadge}
-          <span class="wc-gtin-meta">Total: ${qtyStr}</span>
-        </div>
-        ${sg.lots.map(({ item, i }) => renderWCItemCard(item, i)).join('')}
-      </div>`;
-    }).join('');
 
-    html += `<div class="wc-location-group" data-loc-key="${esc(key)}">
-      <div class="wc-location-header">${esc(label)}<span class="wc-location-count">${locationItems.length}</span></div>
-      ${gtinGroupsHtml}
+      const lotsHtml = lots.length === 0
+        ? '<div class="wc-no-stock">Not in stock &mdash; check if order is needed</div>'
+        : lots.map(lot => renderWCItemCard(lot, lot._flatIdx)).join('');
+
+      locHtml += `<div class="wc-catalog-item-group" data-jiidx="${jiIdx}">
+        <div class="wc-catalog-item-header">
+          <div class="wc-catalog-item-title">
+            <span class="wc-catalog-item-name">${esc(catalogItem.name || catalogItem.ref)}</span>
+            ${expiryBadge}
+            ${normBadgeCls ? `<span class="norm-badge ${normBadgeCls}">${esc(normLabel)}</span>` : ''}
+          </div>
+          <div class="wc-catalog-item-details">
+            <span class="wc-catalog-item-ref">REF: ${esc(catalogItem.ref)}</span>
+            <span class="wc-catalog-item-qty">${piecesDisplay}</span>
+            ${normDisplay ? `<span class="wc-catalog-norm">${esc(normDisplay)}</span>` : ''}
+          </div>
+        </div>
+        ${lotsHtml}
+      </div>`;
+    }
+
+    html += `<div class="wc-location-group" data-loc-key="${esc(locKey)}">
+      <div class="wc-location-header">${esc(label)}<span class="wc-location-count">${totalLots}</span></div>
+      ${locHtml}
     </div>`;
   }
 
@@ -1000,7 +1024,6 @@ function renderWCChecklist() {
   items.forEach((_, i) => wireWCCard(i));
   document.getElementById('btn-wc-finish').addEventListener('click', submitWeeklyCheck);
 
-  // Wire filter bar
   document.getElementById('wc-filter-loc').addEventListener('change', e => {
     state.wcFilters.location = e.target.value;
     applyWCFilters();
@@ -1022,55 +1045,54 @@ function renderWCChecklist() {
   });
 }
 
-/** Show/hide WC cards based on current filters. Called on filter change AND on integrity change. */
 function applyWCFilters() {
-  const { items, decisions } = state.weeklyCheck;
+  const { joined, decisions } = state.weeklyCheck;
   const filters = state.wcFilters;
   if (!filters) return;
-  const { expiryWarningDays: wDays, lowStockThreshold: lowQty } = state.settings;
+  const { expiryWarningDays: wDays } = state.settings;
   const todayStr = today();
 
   const active = Boolean(filters.location) || filters.statuses.size > 0;
   const clearBtn = document.getElementById('wc-filter-clear');
   if (clearBtn) clearBtn.classList.toggle('hidden', !active);
 
-  // Pass 1: show/hide individual lot cards
-  items.forEach((item, i) => {
-    const card = document.getElementById('wc-card-' + i);
-    if (!card) return;
+  joined.forEach((ji, jiIdx) => {
+    const groupEl = document.querySelector(`.wc-catalog-item-group[data-jiidx="${jiIdx}"]`);
+    if (!groupEl) return;
     let pass = true;
+
     if (filters.location) {
-      if ((item.location || '__unassigned__') !== filters.location) pass = false;
+      const itemLoc = ji.catalogItem.location || '__unassigned__';
+      if (itemLoc !== filters.location) pass = false;
     }
+
     if (pass && filters.statuses.size > 0) {
-      const threshold = item.minQty > 0 ? item.minQty : lowQty;
-      const expired  = item.expiry && item.expiry < todayStr;
-      const expiring = !expired && item.expiry && daysDiff(todayStr, item.expiry) <= wDays;
-      const low      = item.qty > 0 && item.qty <= threshold;
-      const flagged  = decisions[i] && decisions[i].integrityStatus === 'flagged';
+      const normPieces  = ji.catalogItem.norm * ji.catalogItem.piecesPerUnit;
+      const isBelowNorm = normPieces > 0 && ji.totalPieces < normPieces;
+      const anyExpiring = ji.lots.some(lot => {
+        const expired = lot.expiry && lot.expiry < todayStr;
+        return !expired && lot.expiry && daysDiff(todayStr, lot.expiry) <= wDays;
+      });
+      const anyFlagged = ji.lots.some(lot => {
+        const dec = (lot._flatIdx !== undefined) ? decisions[lot._flatIdx] : null;
+        return dec && dec.integrityStatus === 'flagged';
+      });
       let any = false;
-      if (filters.statuses.has('expiring') && expiring) any = true;
-      if (filters.statuses.has('low')      && low)      any = true;
-      if (filters.statuses.has('flagged')  && flagged)  any = true;
+      if (filters.statuses.has('below-norm') && isBelowNorm) any = true;
+      if (filters.statuses.has('expiring')   && anyExpiring)  any = true;
+      if (filters.statuses.has('flagged')    && anyFlagged)   any = true;
       if (!any) pass = false;
     }
-    card.classList.toggle('hidden', !pass);
+
+    groupEl.classList.toggle('hidden', !pass);
   });
 
-  // Pass 2: hide GTIN groups where all lot cards are hidden
-  document.querySelectorAll('.wc-gtin-group').forEach(gtinGroup => {
-    const anyVisible = Array.from(gtinGroup.querySelectorAll('.wc-item-card'))
-      .some(c => !c.classList.contains('hidden'));
-    gtinGroup.classList.toggle('hidden', !anyVisible);
-  });
-
-  // Pass 3: hide location groups where all GTIN groups are hidden
   let anyLocVisible = false;
   document.querySelectorAll('.wc-location-group').forEach(locGroup => {
-    const anyGtinVisible = Array.from(locGroup.querySelectorAll('.wc-gtin-group'))
+    const anyVisible = Array.from(locGroup.querySelectorAll('.wc-catalog-item-group'))
       .some(g => !g.classList.contains('hidden'));
-    locGroup.classList.toggle('hidden', !anyGtinVisible);
-    if (anyGtinVisible) anyLocVisible = true;
+    locGroup.classList.toggle('hidden', !anyVisible);
+    if (anyVisible) anyLocVisible = true;
   });
 
   const noMatch = document.getElementById('wc-no-matches');
@@ -1084,13 +1106,18 @@ function renderWCItemCard(item, i) {
   const badgeCls  = expired ? 'badge-expired' : expiring ? 'badge-expiring' : '';
   const expiryStr = formatExpiry(item.expiry);
   const borderCls = expired ? 'wc-item-card-expired' : expiring ? 'wc-item-card-expiring' : '';
-  const qtyStr    = formatQty(item.qty, item.unit);
+
+  const voiceBtn = SPEECH_SUPPORTED
+    ? `<button type="button" class="voice-btn" id="wc-voice-${i}" title="Tap to speak quantity" aria-label="Voice quantity entry">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+      </button>`
+    : '';
 
   return `<div class="wc-item-card ${borderCls}" id="wc-card-${i}">
     <div class="wc-item-meta">
       ${item.lot ? 'LOT: <strong class="mono">' + esc(item.lot) + '</strong>' : '<em>No lot number</em>'}
       ${expiryStr ? ' &nbsp;&middot;&nbsp; ' + esc(expiryStr) : ''}
-      &nbsp;&middot;&nbsp; Qty: <strong>${qtyStr}</strong>
+      &nbsp;&middot;&nbsp; Qty: <strong>${item.qty} pcs</strong>
       ${badgeCls ? `&nbsp;<span class="badge ${badgeCls}">${expired ? 'Expired' : 'Soon'}</span>` : ''}
     </div>
 
@@ -1113,8 +1140,11 @@ function renderWCItemCard(item, i) {
       <button type="button" class="wc-btn-qty" data-index="${i}" data-choice="adjusted">Different</button>
     </div>
     <div class="wc-adjusted-qty hidden" id="wc-adj-qty-${i}">
-      <label>Physical count:</label>
-      <input type="number" id="wc-qty-input-${i}" value="${item.qty}" min="0" inputmode="numeric">
+      <label>Physical count (pieces):</label>
+      <div class="wc-qty-input-row">
+        <input type="number" id="wc-qty-input-${i}" value="${item.qty}" min="0" inputmode="numeric">
+        ${voiceBtn}
+      </div>
     </div>
 
     <div class="wc-reason-field hidden" id="wc-reason-${i}">
@@ -1127,7 +1157,6 @@ function renderWCItemCard(item, i) {
 function wireWCCard(i) {
   const item = state.weeklyCheck.items[i];
 
-  // Integrity tap targets
   document.querySelectorAll(`.wc-btn-integrity[data-index="${i}"]`).forEach(btn => {
     btn.addEventListener('click', () => {
       const choice = btn.dataset.choice;
@@ -1147,7 +1176,6 @@ function wireWCCard(i) {
         state.weeklyCheck.decisions[i].flagNote = '';
       }
       updateWCItemDone(i);
-      // If the user is filtering by "Flagged", flipping the status may add/remove this card.
       if (state.wcFilters && state.wcFilters.statuses && state.wcFilters.statuses.has('flagged')) {
         applyWCFilters();
       }
@@ -1159,7 +1187,6 @@ function wireWCCard(i) {
     updateWCItemDone(i);
   });
 
-  // Quantity tap targets
   document.querySelectorAll(`.wc-btn-qty[data-index="${i}"]`).forEach(btn => {
     btn.addEventListener('click', () => {
       const choice = btn.dataset.choice;
@@ -1193,7 +1220,6 @@ function wireWCCard(i) {
     updateWCItemDone(i);
   });
 
-  // Optional per-row scan
   document.querySelector(`.wc-scan-icon-btn[data-index="${i}"]`).addEventListener('click', () => {
     startScanner('Confirm item — scan barcode', (rawText, parsed) => {
       const scannedGtin = (parsed.gtin || rawText || '').trim();
@@ -1208,6 +1234,15 @@ function wireWCCard(i) {
       }
     });
   });
+
+  if (SPEECH_SUPPORTED) {
+    const voiceBtn = document.getElementById('wc-voice-' + i);
+    if (voiceBtn) {
+      voiceBtn.addEventListener('click', () =>
+        startVoiceEntry(document.getElementById('wc-qty-input-' + i), voiceBtn)
+      );
+    }
+  }
 }
 
 function updateWCItemDone(i) {
@@ -1220,7 +1255,6 @@ function updateWCItemDone(i) {
   const qtySet       = dec.qtyMode === 'matches' ||
                        (dec.qtyMode === 'adjusted' && dec.physicalQty !== null);
 
-  // Reason is required when integrity flagged OR qty actually differs
   const needsReason = dec.integrityStatus === 'flagged' ||
                       (dec.qtyMode === 'adjusted' && variance !== 0);
 
@@ -1239,19 +1273,19 @@ function updateWCItemDone(i) {
 }
 
 function checkWCFinishReady() {
-  const allDone   = state.weeklyCheck.decisions.every(d => d.done);
-  const finishEl  = document.getElementById('wc-finish-area');
+  const allDone  = state.weeklyCheck.decisions.every(d => d.done);
+  const finishEl = document.getElementById('wc-finish-area');
   if (finishEl) finishEl.classList.toggle('hidden', !allDone);
 }
 
 async function submitWeeklyCheck() {
-  const { items, decisions } = state.weeklyCheck;
+  const { items, decisions, joined } = state.weeklyCheck;
   const btn = document.getElementById('btn-wc-finish');
 
   const toSubmit = [];
   items.forEach((item, i) => {
-    const dec     = decisions[i];
-    const physQty = dec.qtyMode === 'matches' ? item.qty : (dec.physicalQty ?? item.qty);
+    const dec      = decisions[i];
+    const physQty  = dec.qtyMode === 'matches' ? item.qty : (dec.physicalQty ?? item.qty);
     const variance = physQty - item.qty;
     if (dec.integrityStatus === 'flagged' || variance !== 0) {
       toSubmit.push({ item, dec, physQty, variance });
@@ -1275,6 +1309,8 @@ async function submitWeeklyCheck() {
     if (!result.success) {
       errorCount++;
       showToast('Error (' + esc(item.name || item.gtin) + '): ' + result.error, 'error');
+    } else {
+      item.qty = physQty;
     }
   }
 
@@ -1283,15 +1319,20 @@ async function submitWeeklyCheck() {
     return;
   }
 
-  renderWCSummary(items, decisions, toSubmit);
+  // Recompute totalPieces for each joined catalog item using updated lot qtys
+  joined.forEach(ji => {
+    ji.totalPieces = ji.lots.reduce((sum, lot) => sum + (lot.qty || 0), 0);
+  });
+
+  renderWCSummary(items, decisions, toSubmit, joined);
 }
 
-function renderWCSummary(items, decisions, submitted) {
-  const container  = document.getElementById('wc-container');
-  const flagged    = submitted.filter(s => s.dec.integrityStatus === 'flagged');
-  const adjusted   = submitted.filter(s => s.variance !== 0);
-  const passed     = items.length - submitted.length;
-  const timeStr    = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+function renderWCSummary(items, decisions, submitted, joined) {
+  const container = document.getElementById('wc-container');
+  const flagged   = submitted.filter(s => s.dec.integrityStatus === 'flagged');
+  const adjusted  = submitted.filter(s => s.variance !== 0);
+  const passed    = items.length - submitted.length;
+  const timeStr   = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
   const flagList = flagged.length === 0 ? '' : `
     <div class="wc-summary-section">
@@ -1313,6 +1354,55 @@ function renderWCSummary(items, decisions, submitted) {
         </div>`).join('')}
     </div>`;
 
+  // Build below-norm order lists from updated joined data
+  const belowNorm   = (joined || []).filter(ji => {
+    const normPieces = ji.catalogItem.norm * ji.catalogItem.piecesPerUnit;
+    return normPieces > 0 && ji.totalPieces < normPieces;
+  });
+  const consumables = belowNorm.filter(ji => ji.catalogItem.category === 'Consumable');
+  const implants    = belowNorm.filter(ji => ji.catalogItem.category === 'Implant');
+
+  function orderItemHtml(ji) {
+    const normPieces    = ji.catalogItem.norm * ji.catalogItem.piecesPerUnit;
+    const shortfall     = normPieces - ji.totalPieces;
+    const shortUnits    = Math.ceil(shortfall / (ji.catalogItem.piecesPerUnit || 1));
+    const currentDisplay = fmtPieces(ji.totalPieces, ji.catalogItem.orderingUnit, ji.catalogItem.piecesPerUnit);
+    return `<div class="wc-order-item">
+      <div class="wc-order-item-name">${esc(ji.catalogItem.name || ji.catalogItem.ref)}</div>
+      <div class="wc-order-item-detail">REF: ${esc(ji.catalogItem.ref)} &middot; Have: ${currentDisplay} &middot; Order: ${shortUnits} ${esc(ji.catalogItem.orderingUnit)}</div>
+    </div>`;
+  }
+
+  function generateCopyText(jiList, title) {
+    const lines = [title, ''];
+    jiList.forEach(ji => {
+      const normPieces = ji.catalogItem.norm * ji.catalogItem.piecesPerUnit;
+      const shortfall  = normPieces - ji.totalPieces;
+      const shortUnits = Math.ceil(shortfall / (ji.catalogItem.piecesPerUnit || 1));
+      lines.push(`- ${ji.catalogItem.name || ji.catalogItem.ref} (REF: ${ji.catalogItem.ref}): order ${shortUnits} ${ji.catalogItem.orderingUnit}`);
+    });
+    return lines.join('\n');
+  }
+
+  const topUpHtml = consumables.length === 0 ? '' : `
+    <div class="wc-summary-section wc-order-section">
+      <div class="wc-summary-section-title">Top-Up List (Consumables)</div>
+      ${consumables.map(orderItemHtml).join('')}
+      <button type="button" class="btn-secondary wc-copy-btn" data-copy="topup">Copy to clipboard</button>
+    </div>`;
+
+  const vendorHtml = implants.length === 0 ? '' : `
+    <div class="wc-summary-section wc-order-section">
+      <div class="wc-summary-section-title">Vendor Order List (Implants)</div>
+      ${implants.map(orderItemHtml).join('')}
+      <button type="button" class="btn-secondary wc-copy-btn" data-copy="vendor">Copy to clipboard</button>
+    </div>`;
+
+  const noOrdersHtml = (consumables.length === 0 && implants.length === 0) ? `
+    <div class="wc-summary-section">
+      <div class="wc-summary-section-title" style="color:var(--green)">&#10003; All stock at or above norm</div>
+    </div>` : '';
+
   container.innerHTML = `
     <div class="wc-summary">
       <div class="wc-summary-title">Check Complete &mdash; ${esc(timeStr)}</div>
@@ -1328,8 +1418,25 @@ function renderWCSummary(items, decisions, submitted) {
       </div>
       ${flagList}
       ${adjList}
+      ${noOrdersHtml}
+      ${topUpHtml}
+      ${vendorHtml}
       <button id="btn-wc-done" class="btn-primary">Done</button>
     </div>`;
+
+  container.querySelectorAll('.wc-copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const which = btn.dataset.copy;
+      const dateStr = new Date().toLocaleDateString('en-GB');
+      const text = which === 'topup'
+        ? generateCopyText(consumables, 'Top-Up List (Consumables) — ' + dateStr)
+        : generateCopyText(implants,    'Vendor Order List (Implants) — ' + dateStr);
+      navigator.clipboard.writeText(text).then(
+        ()  => showToast('Copied to clipboard', 'success'),
+        ()  => showToast('Copy failed — please copy manually', 'error')
+      );
+    });
+  });
 
   document.getElementById('btn-wc-done').addEventListener('click', renderWCIdle);
 }
@@ -1404,6 +1511,15 @@ function formatQty(qty, unit) {
   return u ? `${q} ${esc(u)}` : q;
 }
 
+/** Format pieces with optional box-equivalent: "150 pcs (1.5 Box)" or "10 pcs" when ppu=1. */
+function fmtPieces(totalPieces, orderingUnit, piecesPerUnit) {
+  const ppu  = piecesPerUnit || 1;
+  const unit = orderingUnit  || 'Piece';
+  if (ppu === 1 || unit === 'Piece') return totalPieces + ' pcs';
+  const boxes = (totalPieces / ppu).toFixed(1).replace(/\.0$/, '');
+  return `${totalPieces} pcs (${boxes} ${esc(unit)})`;
+}
+
 // Prevent XSS when inserting dynamic content into innerHTML
 function esc(str) {
   if (str === null || str === undefined) return '';
@@ -1448,4 +1564,28 @@ function loadSettings() {
 }
 function saveSettings(s) {
   localStorage.setItem('cons-tracker-settings', JSON.stringify(s));
+}
+
+/** Push-to-talk voice entry. Fills inputEl with the spoken number; never auto-submits. */
+function startVoiceEntry(inputEl, btnEl) {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return;
+  const recog = new SR();
+  recog.lang            = 'en-US';
+  recog.continuous      = false;
+  recog.interimResults  = false;
+  recog.maxAlternatives = 1;
+  btnEl.classList.add('voice-btn-active');
+  try { recog.start(); } catch (_) { btnEl.classList.remove('voice-btn-active'); return; }
+  recog.onresult = (event) => {
+    const transcript = event.results[0][0].transcript.trim();
+    const num = parseInt(transcript.replace(/\D/g, ''), 10);
+    if (!isNaN(num) && num >= 0) {
+      inputEl.value = num;
+      inputEl.dispatchEvent(new Event('input'));
+    }
+    btnEl.classList.remove('voice-btn-active');
+  };
+  recog.onerror = () => btnEl.classList.remove('voice-btn-active');
+  recog.onend   = () => btnEl.classList.remove('voice-btn-active');
 }

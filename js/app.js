@@ -36,8 +36,9 @@ function setupNav() {
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
       btn.classList.add('active');
       document.getElementById('tab-' + tab).classList.add('active');
-      // Auto-load dashboard when switching to it
+      // Auto-load data tabs when switched to
       if (tab === 'dashboard') loadDashboard();
+      if (tab === 'scan-out')  loadScanOutTab();
     });
   });
 }
@@ -66,6 +67,15 @@ function setupScanIn() {
       document.getElementById('si-unit-other').value = '';
     }
   });
+
+  // Restock search: lazy-load inventory on first focus
+  document.getElementById('si-restock-search').addEventListener('focus', () => {
+    if (!state.siRestockItems) loadScanInRestockList();
+  });
+  document.getElementById('si-restock-search').addEventListener('input', e => {
+    renderRestockList(e.target.value.trim());
+  });
+  document.getElementById('btn-si-restock-clear').addEventListener('click', clearScanInRestock);
 
   document.getElementById('form-scan-in').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -124,6 +134,86 @@ function clearScanInForm() {
   document.getElementById('si-unit').value = '';
   document.getElementById('si-unit-other-field').classList.add('hidden');
   document.getElementById('si-expiry-warning').classList.add('hidden');
+  clearScanInRestock();
+}
+
+async function loadScanInRestockList() {
+  const result = await api.get('getInventory');
+  if (!result.success) return;
+  const groupMap = new Map();
+  (result.items || []).forEach(item => {
+    if (!groupMap.has(item.gtin)) groupMap.set(item.gtin, { gtin: item.gtin, name: item.name || '', unit: item.unit || '' });
+    else {
+      const g = groupMap.get(item.gtin);
+      if (!g.name && item.name) g.name = item.name;
+      if (!g.unit && item.unit) g.unit = item.unit;
+    }
+  });
+  state.siRestockItems = Array.from(groupMap.values())
+    .sort((a, b) => (a.name || a.gtin).localeCompare(b.name || b.gtin));
+  renderRestockList(document.getElementById('si-restock-search').value.trim());
+}
+
+function renderRestockList(term) {
+  const listEl = document.getElementById('si-restock-list');
+  const items  = state.siRestockItems;
+  if (!items) return;
+  const t = term.toLowerCase();
+  const filtered = items.filter(i =>
+    !t || (i.name && i.name.toLowerCase().includes(t)) || i.gtin.toLowerCase().includes(t)
+  );
+  if (filtered.length === 0) {
+    listEl.innerHTML = '<p class="no-items" style="padding:10px 0">No items found.</p>';
+    listEl.classList.remove('hidden');
+    return;
+  }
+  listEl.innerHTML = filtered.map(i =>
+    `<div class="si-restock-row" data-gtin="${esc(i.gtin)}" data-name="${esc(i.name)}" data-unit="${esc(i.unit)}">
+      <div class="si-restock-name">${esc(i.name || i.gtin)}</div>
+      <div class="si-restock-meta">REF: ${esc(i.gtin)}</div>
+    </div>`
+  ).join('');
+  listEl.classList.remove('hidden');
+  listEl.querySelectorAll('.si-restock-row').forEach(row => {
+    row.addEventListener('click', () => fillScanInFromRestock(row.dataset.gtin, row.dataset.name, row.dataset.unit));
+  });
+}
+
+function fillScanInFromRestock(gtin, name, unit) {
+  document.getElementById('si-gtin').value = gtin;
+  document.getElementById('si-name').value = name;
+  document.getElementById('si-gtin').readOnly = true;
+  document.getElementById('si-name').readOnly = true;
+  if (unit) {
+    const sel  = document.getElementById('si-unit');
+    const opts = Array.from(sel.options).map(o => o.value);
+    if (opts.includes(unit)) {
+      sel.value = unit;
+    } else {
+      sel.value = 'Other';
+      document.getElementById('si-unit-other-field').classList.remove('hidden');
+      document.getElementById('si-unit-other').value = unit;
+    }
+  }
+  document.getElementById('si-restock-name').textContent = name || gtin;
+  document.getElementById('si-restock-selected').classList.remove('hidden');
+  document.getElementById('si-restock-list').classList.add('hidden');
+  document.getElementById('si-restock-search').value = '';
+  document.getElementById('si-lot').focus();
+}
+
+function clearScanInRestock() {
+  state.siRestockSelected = null;
+  const gtinEl = document.getElementById('si-gtin');
+  const nameEl = document.getElementById('si-name');
+  if (gtinEl) gtinEl.readOnly = false;
+  if (nameEl) nameEl.readOnly = false;
+  const selEl = document.getElementById('si-restock-selected');
+  const listEl = document.getElementById('si-restock-list');
+  const searchEl = document.getElementById('si-restock-search');
+  if (selEl)   selEl.classList.add('hidden');
+  if (listEl)  listEl.classList.add('hidden');
+  if (searchEl) searchEl.value = '';
 }
 
 async function submitScanIn(gtin, lot, expiry, qty, itemName, minQty = null, unit = '') {
@@ -154,6 +244,7 @@ async function submitScanIn(gtin, lot, expiry, qty, itemName, minQty = null, uni
 // =====================================================================
 
 function setupScanOut() {
+  // Camera scan (secondary option)
   document.getElementById('btn-scan-out-start').addEventListener('click', () => {
     startScanner('Scan Out — point camera at item barcode', async (rawText, parsed) => {
       if (!checkDuplicate(rawText)) return;
@@ -161,8 +252,24 @@ function setupScanOut() {
     });
   });
 
+  // Manual search filter
+  document.getElementById('so-search').addEventListener('input', e => {
+    renderSOList(e.target.value.trim());
+  });
+
+  // Back button from lot step
+  document.getElementById('btn-so-lot-back').addEventListener('click', () => {
+    hide('so-lot-step');
+    show('so-item-list');
+  });
+
+  // Cancel from result card — return to manual list
   document.getElementById('btn-so-cancel').addEventListener('click', () => {
     hide('scan-out-result');
+    show('so-manual-panel');
+    document.getElementById('btn-scan-out-start').classList.remove('hidden');
+    hide('so-lot-step');
+    show('so-item-list');
     state.scanOutItem = null;
     document.getElementById('btn-so-confirm').textContent = 'Confirm Use';
     document.getElementById('btn-so-cancel').textContent  = 'Cancel';
@@ -174,6 +281,119 @@ function setupScanOut() {
     const qty = parseInt(document.getElementById('so-qty').value, 10) || 1;
     await submitScanOut(qty);
   });
+}
+
+async function loadScanOutTab() {
+  const listEl   = document.getElementById('so-item-list');
+  const searchEl = document.getElementById('so-search');
+  if (!listEl) return;
+  if (searchEl) searchEl.value = '';
+  hide('so-lot-step');
+  show('so-item-list');
+  listEl.innerHTML = '<p class="no-items">Loading&hellip;</p>';
+
+  const result = await api.get('getInventory');
+  if (!result.success) {
+    listEl.innerHTML = '<p class="no-items">Error loading inventory</p>';
+    return;
+  }
+  const items = result.items || [];
+  if (items.length === 0) {
+    listEl.innerHTML = '<p class="no-items">No items in inventory.</p>';
+    return;
+  }
+
+  const groupMap = new Map();
+  items.forEach(item => {
+    if (!groupMap.has(item.gtin)) {
+      groupMap.set(item.gtin, { gtin: item.gtin, name: item.name || item.gtin, lots: [], totalQty: 0, location: item.location, unit: item.unit });
+    }
+    const g = groupMap.get(item.gtin);
+    g.lots.push(item);
+    g.totalQty += item.qty;
+    if (!g.name && item.name) g.name = item.name;
+  });
+  state.soGroups = Array.from(groupMap.values())
+    .sort((a, b) => (a.name || a.gtin).localeCompare(b.name || b.gtin));
+  renderSOList('');
+}
+
+function renderSOList(term) {
+  const listEl = document.getElementById('so-item-list');
+  const groups = state.soGroups;
+  if (!groups || !listEl) return;
+  const t        = term.toLowerCase();
+  const todayStr = today();
+  const filtered = groups.filter(g =>
+    !t || (g.name && g.name.toLowerCase().includes(t)) || g.gtin.toLowerCase().includes(t)
+  );
+  if (filtered.length === 0) {
+    listEl.innerHTML = '<p class="no-items">No items found.</p>';
+    return;
+  }
+  listEl.innerHTML = filtered.map(g => {
+    const anyExpired  = g.lots.some(l => l.expiry && l.expiry < todayStr);
+    const anyExpiring = !anyExpired && g.lots.some(l => l.expiry && daysDiff(todayStr, l.expiry) <= state.settings.expiryWarningDays);
+    const rowCls = anyExpired ? 'row-expired' : anyExpiring ? 'row-expiring' : '';
+    const qtyStr = formatQty(g.totalQty, g.unit);
+    const locStr = g.location ? ` &middot; ${esc(g.location)}` : '';
+    const badge  = anyExpired
+      ? ' <span class="badge badge-expired">Expired</span>'
+      : anyExpiring ? ' <span class="badge badge-expiring">Soon</span>' : '';
+    return `<div class="so-item-row ${rowCls}" data-gtin="${esc(g.gtin)}">
+      <div>
+        <div class="so-item-name">${esc(g.name)}${badge}</div>
+        <div class="so-item-meta">Qty: ${qtyStr}${locStr}</div>
+      </div>
+      <span class="so-item-arrow">&#8250;</span>
+    </div>`;
+  }).join('');
+  listEl.querySelectorAll('.so-item-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const group = state.soGroups.find(g => g.gtin === row.dataset.gtin);
+      if (!group) return;
+      if (group.lots.length === 1) {
+        const lot = group.lots[0];
+        lookupForScanOut({ gtin: lot.gtin, lot: lot.lot, expiry: lot.expiry }, lot.gtin);
+      } else {
+        showSOLotStep(group);
+      }
+    });
+  });
+}
+
+function showSOLotStep(group) {
+  hide('so-item-list');
+  const lotListEl = document.getElementById('so-lot-list');
+  const todayStr  = today();
+  const sorted    = [...group.lots].sort((a, b) => {
+    if (!a.expiry && !b.expiry) return 0;
+    if (!a.expiry) return 1;
+    if (!b.expiry) return -1;
+    return a.expiry.localeCompare(b.expiry);
+  });
+  lotListEl.innerHTML = sorted.map((lot, i) => {
+    const expired  = lot.expiry && lot.expiry < todayStr;
+    const expiring = !expired && lot.expiry && daysDiff(todayStr, lot.expiry) <= state.settings.expiryWarningDays;
+    const lotCls   = expired ? 'lot-expired' : expiring ? 'lot-expiring' : '';
+    const qtyStr   = formatQty(lot.qty, lot.unit);
+    return `<div class="so-lot-row ${lotCls}" data-lot-idx="${i}">
+      <div>
+        <div class="so-lot-expiry">${esc(formatExpiry(lot.expiry) || 'No expiry date')}</div>
+        <div class="so-lot-meta">LOT: ${esc(lot.lot || '—')} &middot; Qty: ${qtyStr}</div>
+      </div>
+      <span class="so-item-arrow">&#8250;</span>
+    </div>`;
+  }).join('');
+  lotListEl.querySelectorAll('.so-lot-row').forEach(row => {
+    row.addEventListener('click', () => {
+      const lot = sorted[parseInt(row.dataset.lotIdx, 10)];
+      hide('so-lot-step');
+      show('so-item-list');
+      lookupForScanOut({ gtin: lot.gtin, lot: lot.lot, expiry: lot.expiry }, lot.gtin);
+    });
+  });
+  show('so-lot-step');
 }
 
 async function lookupForScanOut(parsed, rawText) {
@@ -191,6 +411,8 @@ async function lookupForScanOut(parsed, rawText) {
   }
 
   resultDiv.classList.remove('hidden');
+  hide('so-manual-panel');
+  document.getElementById('btn-scan-out-start').classList.add('hidden');
 
   if (!result.found) {
     state.scanOutItem = null;
@@ -334,13 +556,13 @@ async function loadDashboard() {
     return;
   }
 
-  state.dashboardItems = items;
+  state.dashboardItems   = items;
   state.dashboardFilters = { location: '', statuses: new Set() };
 
   const { expiryWarningDays: wDays, lowStockThreshold: lowQty } = state.settings;
   const todayStr = today();
 
-  // Sort: expired first → soonest expiry → no-expiry items last
+  // Sort flat items: expired first → soonest expiry → no-expiry last
   items.sort((a, b) => {
     if (!a.expiry && !b.expiry) return 0;
     if (!a.expiry) return 1;
@@ -348,20 +570,36 @@ async function loadDashboard() {
     return a.expiry.localeCompare(b.expiry);
   });
 
-  // KPI counts
-  let expiredCount = 0, soonCount = 0, lowCount = 0;
+  // Build GTIN groups (one per unique ref)
+  const groupMap = new Map();
   items.forEach(item => {
-    const threshold = item.minQty > 0 ? item.minQty : lowQty;
-    if (item.expiry && item.expiry < todayStr)                           expiredCount++;
-    else if (item.expiry && daysDiff(todayStr, item.expiry) <= wDays)   soonCount++;
-    if (item.qty > 0 && item.qty <= threshold)                           lowCount++;
+    if (!groupMap.has(item.gtin)) {
+      groupMap.set(item.gtin, { gtin: item.gtin, name: item.name || item.gtin, lots: [], totalQty: 0, soonestExpiry: null, location: item.location, unit: item.unit });
+    }
+    const g = groupMap.get(item.gtin);
+    g.lots.push(item);
+    g.totalQty += item.qty;
+    if (item.expiry && (!g.soonestExpiry || item.expiry < g.soonestExpiry)) g.soonestExpiry = item.expiry;
+    if (!g.name && item.name) g.name = item.name;
+  });
+  state.dashboardGroups = Array.from(groupMap.values());
+
+  // KPI counts (per group)
+  let expiredCount = 0, soonCount = 0, lowCount = 0;
+  state.dashboardGroups.forEach(g => {
+    const threshold   = Math.max(...g.lots.map(l => l.minQty || 0)) || lowQty;
+    const anyExpired  = g.lots.some(l => l.expiry && l.expiry < todayStr);
+    const anyExpiring = !anyExpired && g.lots.some(l => l.expiry && daysDiff(todayStr, l.expiry) <= wDays);
+    if (anyExpired)  expiredCount++;
+    else if (anyExpiring) soonCount++;
+    if (g.totalQty > 0 && g.totalQty <= threshold) lowCount++;
   });
 
   // ── KPI cards ───────────────────────────────────────────────────────
   const kpiHtml = `<div class="kpi-grid">
     <div class="kpi-card kpi-total">
-      <div class="kpi-lbl">Active Batches</div>
-      <div class="kpi-num">${items.length}</div>
+      <div class="kpi-lbl">Active Items</div>
+      <div class="kpi-num">${state.dashboardGroups.length}</div>
     </div>
     <div class="kpi-card kpi-expiring">
       <div class="kpi-lbl">Expiring Soon</div>
@@ -455,37 +693,62 @@ async function loadDashboard() {
     <button type="button" class="filter-clear hidden" id="dash-filter-clear">Clear</button>
   </div>`;
 
-  // ── Full inventory cards ─────────────────────────────────────────────
-  const cards = items.map((item, idx) => {
-    const threshold = item.minQty > 0 ? item.minQty : lowQty;
-    const expired  = item.expiry && item.expiry < todayStr;
-    const expiring = !expired && item.expiry && daysDiff(todayStr, item.expiry) <= wDays;
-    const low      = item.qty > 0 && item.qty <= threshold;
-    const cls      = expired ? 'inv-card-expired' : expiring ? 'inv-card-expiring' : 'inv-card-ok';
-    const badge    = expired
+  // ── Full inventory cards (one per GTIN group) ────────────────────────
+  const cards = state.dashboardGroups.map((g, gIdx) => {
+    const threshold   = Math.max(...g.lots.map(l => l.minQty || 0)) || lowQty;
+    const anyExpired  = g.lots.some(l => l.expiry && l.expiry < todayStr);
+    const anyExpiring = !anyExpired && g.lots.some(l => l.expiry && daysDiff(todayStr, l.expiry) <= wDays);
+    const isLow       = g.totalQty > 0 && g.totalQty <= threshold;
+    const cls         = anyExpired ? 'inv-card-expired' : anyExpiring ? 'inv-card-expiring' : 'inv-card-ok';
+    const badge       = anyExpired
       ? '<span class="badge badge-expired">Expired</span>'
-      : expiring ? '<span class="badge badge-expiring">Soon</span>' : '';
-    const qtyDisplay = formatQty(item.qty, item.unit);
-    const locChip = item.location
-      ? `<div class="inv-card-loc">&#128205; ${esc(item.location)}</div>` : '';
-    return `<div class="inv-card ${cls}" data-card-idx="${idx}">
+      : anyExpiring ? '<span class="badge badge-expiring">Soon</span>' : '';
+    const qtyDisplay  = formatQty(g.totalQty, g.unit);
+    const locChip     = g.location ? `<div class="inv-card-loc">&#128205; ${esc(g.location)}</div>` : '';
+    const firstLot    = g.lots[0];
+    const multiLot    = g.lots.length > 1;
+
+    // Per-lot breakdown (shown when expanded)
+    const lotsHtml = g.lots.map(lot => {
+      const le = lot.expiry && lot.expiry < todayStr;
+      const lx = !le && lot.expiry && daysDiff(todayStr, lot.expiry) <= wDays;
+      const ec = le ? 'inv-lot-value-expiry-expired' : lx ? 'inv-lot-value-expiry-expiring' : '';
+      return `<div class="inv-lot-row">
+        <div class="inv-lot-row-fields">
+          ${lot.lot    ? `<span class="inv-lot-field"><span class="inv-lot-label">LOT</span><span class="inv-lot-value">${esc(lot.lot)}</span></span>` : ''}
+          ${lot.expiry ? `<span class="inv-lot-field"><span class="inv-lot-label">Expiry</span><span class="inv-lot-value ${ec}">${esc(formatExpiry(lot.expiry))}</span></span>` : ''}
+          <span class="inv-lot-field"><span class="inv-lot-label">Qty</span><span class="inv-lot-value">${formatQty(lot.qty, lot.unit)}</span></span>
+          <span class="inv-lot-field"><span class="inv-lot-label">Min&nbsp;Qty</span>
+            <input type="number" class="minqty-input" data-gtin="${esc(lot.gtin)}" data-lot="${esc(lot.lot || '')}" data-expiry="${esc(lot.expiry || '')}"
+                   value="${lot.minQty > 0 ? lot.minQty : ''}" placeholder="${lowQty}" min="0">
+          </span>
+        </div>
+      </div>`;
+    }).join('');
+
+    const expandBtn     = multiLot ? `<button type="button" class="inv-lot-expand-btn" data-gidx="${gIdx}">${g.lots.length} lots &#9660;</button>` : '';
+    const singleMinQty  = !multiLot ? `<div class="inv-card-minqty">
+      <label style="white-space:nowrap">Min qty alert:</label>
+      <input type="number" class="minqty-input" data-gtin="${esc(g.gtin)}" data-lot="${esc(firstLot?.lot || '')}" data-expiry="${esc(firstLot?.expiry || '')}"
+             value="${(firstLot?.minQty || 0) > 0 ? firstLot.minQty : ''}" placeholder="${lowQty}" min="0"
+             title="Alert threshold (blank = global default of ${lowQty})">
+    </div>` : '';
+
+    return `<div class="inv-card ${cls}" data-group-idx="${gIdx}">
       <div class="inv-card-header">
-        <span class="inv-card-name">${esc(item.name || item.gtin)}</span>
+        <span class="inv-card-name">${esc(g.name)}</span>
         ${badge}
+        ${expandBtn}
       </div>
-      <div class="inv-card-expiry">${esc(formatExpiry(item.expiry) || 'No expiry date')}</div>
+      ${g.gtin !== g.name ? `<div class="inv-card-meta" style="margin-bottom:4px"><span class="inv-lot-field"><span class="inv-lot-label">REF</span> <span class="inv-lot-value">${esc(g.gtin)}</span></span></div>` : ''}
+      <div class="inv-card-expiry">${esc(formatExpiry(g.soonestExpiry) || 'No expiry date')}</div>
       <div class="inv-card-meta">
-        <span>Qty: <strong class="${low ? 'inv-card-qty-low' : ''}">${qtyDisplay}${low ? ' · LOW' : ''}</strong></span>
-        ${item.lot    ? '<span>Lot: ' + esc(item.lot) + '</span>' : ''}
-        ${item.gtin && item.name ? '<span class="mono" style="font-size:.7rem">' + esc(item.gtin) + '</span>' : ''}
+        <span>Qty: <strong class="${isLow ? 'inv-card-qty-low' : ''}">${qtyDisplay}${isLow ? ' · LOW' : ''}</strong></span>
+        ${!multiLot && firstLot?.lot ? '<span>LOT: ' + esc(firstLot.lot) + '</span>' : ''}
       </div>
       ${locChip}
-      <div class="inv-card-minqty">
-        <label for="mq-${idx}" style="white-space:nowrap">Min qty alert:</label>
-        <input type="number" id="mq-${idx}" class="minqty-input" data-idx="${idx}"
-               value="${item.minQty > 0 ? item.minQty : ''}"
-               placeholder="${lowQty}" min="0" title="Alert threshold (blank = global default of ${lowQty})">
-      </div>
+      ${singleMinQty}
+      ${multiLot ? `<div class="inv-lots-list hidden" id="inv-lots-${gIdx}">${lotsHtml}</div>` : ''}
     </div>`;
   }).join('');
 
@@ -524,25 +787,37 @@ async function loadDashboard() {
 
   content.querySelectorAll('.minqty-input').forEach(input => {
     const save = async () => {
-      const idx  = parseInt(input.dataset.idx, 10);
-      const item = items[idx];
-      const val  = input.value.trim();
+      const gtin   = input.dataset.gtin;
+      const lot    = input.dataset.lot;
+      const expiry = input.dataset.expiry;
+      const val    = input.value.trim();
       const minQty = val === '' ? 0 : parseInt(val, 10);
       if (isNaN(minQty) || minQty < 0) { showToast('Min qty must be 0 or higher', 'error'); return; }
-      const result = await api.post('setMinQty', {
-        gtin: item.gtin, lot: item.lot, expiry: item.expiry, minQty
-      });
+      const result = await api.post('setMinQty', { gtin, lot, expiry, minQty });
       if (result.success) showToast('Min qty saved', 'success');
       else showToast('Error: ' + result.error, 'error');
     };
     input.addEventListener('blur', save);
     input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
   });
+
+  content.querySelectorAll('.inv-lot-expand-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const gIdx   = parseInt(btn.dataset.gidx, 10);
+      const lotsEl = document.getElementById('inv-lots-' + gIdx);
+      if (!lotsEl) return;
+      const open = !lotsEl.classList.contains('hidden');
+      lotsEl.classList.toggle('hidden', open);
+      btn.innerHTML = open
+        ? `${state.dashboardGroups[gIdx].lots.length} lots &#9660;`
+        : `${state.dashboardGroups[gIdx].lots.length} lots &#9650;`;
+    });
+  });
 }
 
-/** Apply current dashboard filters by toggling .hidden on each inventory card. */
+/** Apply current dashboard filters by toggling .hidden on each group card. */
 function applyDashboardFilters() {
-  const items   = state.dashboardItems || [];
+  const groups  = state.dashboardGroups || [];
   const filters = state.dashboardFilters;
   const { expiryWarningDays: wDays, lowStockThreshold: lowQty } = state.settings;
   const todayStr = today();
@@ -551,24 +826,23 @@ function applyDashboardFilters() {
   document.getElementById('dash-filter-clear').classList.toggle('hidden', !active);
 
   let visibleCount = 0;
-  items.forEach((item, idx) => {
-    const card = document.querySelector(`.inv-card[data-card-idx="${idx}"]`);
+  groups.forEach((g, gIdx) => {
+    const card = document.querySelector(`.inv-card[data-group-idx="${gIdx}"]`);
     if (!card) return;
-
     let pass = true;
     if (filters.location) {
-      const itemLoc = item.location || '__unassigned__';
-      if (itemLoc !== filters.location) pass = false;
+      const hasLoc = g.lots.some(l => (l.location || '__unassigned__') === filters.location);
+      if (!hasLoc) pass = false;
     }
     if (pass && filters.statuses.size > 0) {
-      const threshold = item.minQty > 0 ? item.minQty : lowQty;
-      const expired  = item.expiry && item.expiry < todayStr;
-      const expiring = !expired && item.expiry && daysDiff(todayStr, item.expiry) <= wDays;
-      const low      = item.qty > 0 && item.qty <= threshold;
+      const threshold   = Math.max(...g.lots.map(l => l.minQty || 0)) || lowQty;
+      const anyExpired  = g.lots.some(l => l.expiry && l.expiry < todayStr);
+      const anyExpiring = !anyExpired && g.lots.some(l => l.expiry && daysDiff(todayStr, l.expiry) <= wDays);
+      const isLow       = g.totalQty > 0 && g.totalQty <= threshold;
       let any = false;
-      if (filters.statuses.has('expiring') && expiring) any = true;
-      if (filters.statuses.has('expired')  && expired)  any = true;
-      if (filters.statuses.has('low')      && low)      any = true;
+      if (filters.statuses.has('expiring') && anyExpiring) any = true;
+      if (filters.statuses.has('expired')  && anyExpired)  any = true;
+      if (filters.statuses.has('low')      && isLow)       any = true;
       if (!any) pass = false;
     }
     card.classList.toggle('hidden', !pass);
@@ -678,10 +952,43 @@ function renderWCChecklist() {
   let html = filterBarHtml;
   html += '<p class="no-items hidden" id="wc-no-matches">No items match the current filter.</p>';
   for (const key of sortedKeys) {
+    const locationItems = groups.get(key);
     const label = key === '__unassigned__' ? 'Unassigned' : key;
+
+    // Sub-group by GTIN within this location
+    const gtinMap = new Map();
+    locationItems.forEach(({ item, i }) => {
+      if (!gtinMap.has(item.gtin)) {
+        gtinMap.set(item.gtin, { gtin: item.gtin, name: item.name || item.gtin, lots: [], totalQty: 0, soonestExpiry: null, unit: item.unit });
+      }
+      const sg = gtinMap.get(item.gtin);
+      sg.lots.push({ item, i });
+      sg.totalQty += item.qty;
+      if (item.expiry && (!sg.soonestExpiry || item.expiry < sg.soonestExpiry)) sg.soonestExpiry = item.expiry;
+      if (!sg.name && item.name) sg.name = item.name;
+    });
+
+    const todayForWC = today();
+    const gtinGroupsHtml = Array.from(gtinMap.values()).map(sg => {
+      const anyExpired  = sg.lots.some(({ item }) => item.expiry && item.expiry < todayForWC);
+      const anyExpiring = !anyExpired && sg.lots.some(({ item }) => item.expiry && daysDiff(todayForWC, item.expiry) <= (state.settings.expiryWarningDays || 14));
+      const hdrBadge    = anyExpired
+        ? '<span class="badge badge-expired">Expired</span>'
+        : anyExpiring ? '<span class="badge badge-expiring">Soon</span>' : '';
+      const qtyStr = formatQty(sg.totalQty, sg.unit);
+      return `<div class="wc-gtin-group" data-gtin="${esc(sg.gtin)}">
+        <div class="wc-gtin-header">
+          <span class="wc-gtin-name">${esc(sg.name)}</span>
+          ${hdrBadge}
+          <span class="wc-gtin-meta">Total: ${qtyStr}</span>
+        </div>
+        ${sg.lots.map(({ item, i }) => renderWCItemCard(item, i)).join('')}
+      </div>`;
+    }).join('');
+
     html += `<div class="wc-location-group" data-loc-key="${esc(key)}">
-      <div class="wc-location-header">${esc(label)}<span class="wc-location-count">${groups.get(key).length}</span></div>
-      ${groups.get(key).map(({ item, i }) => renderWCItemCard(item, i)).join('')}
+      <div class="wc-location-header">${esc(label)}<span class="wc-location-count">${locationItems.length}</span></div>
+      ${gtinGroupsHtml}
     </div>`;
   }
 
@@ -727,17 +1034,13 @@ function applyWCFilters() {
   const clearBtn = document.getElementById('wc-filter-clear');
   if (clearBtn) clearBtn.classList.toggle('hidden', !active);
 
-  // Track which groups have any visible card
-  const groupVisible = new Map();
-
+  // Pass 1: show/hide individual lot cards
   items.forEach((item, i) => {
     const card = document.getElementById('wc-card-' + i);
     if (!card) return;
-
     let pass = true;
     if (filters.location) {
-      const itemLoc = item.location || '__unassigned__';
-      if (itemLoc !== filters.location) pass = false;
+      if ((item.location || '__unassigned__') !== filters.location) pass = false;
     }
     if (pass && filters.statuses.size > 0) {
       const threshold = item.minQty > 0 ? item.minQty : lowQty;
@@ -752,23 +1055,26 @@ function applyWCFilters() {
       if (!any) pass = false;
     }
     card.classList.toggle('hidden', !pass);
-
-    const key = item.location || '__unassigned__';
-    if (pass) groupVisible.set(key, true);
-    else if (!groupVisible.has(key)) groupVisible.set(key, false);
   });
 
-  // Hide whole groups when none of their cards are visible
-  let anyVisible = false;
-  document.querySelectorAll('.wc-location-group').forEach(group => {
-    const key = group.dataset.locKey;
-    const visible = groupVisible.get(key) === true;
-    group.classList.toggle('hidden', !visible);
-    if (visible) anyVisible = true;
+  // Pass 2: hide GTIN groups where all lot cards are hidden
+  document.querySelectorAll('.wc-gtin-group').forEach(gtinGroup => {
+    const anyVisible = Array.from(gtinGroup.querySelectorAll('.wc-item-card'))
+      .some(c => !c.classList.contains('hidden'));
+    gtinGroup.classList.toggle('hidden', !anyVisible);
+  });
+
+  // Pass 3: hide location groups where all GTIN groups are hidden
+  let anyLocVisible = false;
+  document.querySelectorAll('.wc-location-group').forEach(locGroup => {
+    const anyGtinVisible = Array.from(locGroup.querySelectorAll('.wc-gtin-group'))
+      .some(g => !g.classList.contains('hidden'));
+    locGroup.classList.toggle('hidden', !anyGtinVisible);
+    if (anyGtinVisible) anyLocVisible = true;
   });
 
   const noMatch = document.getElementById('wc-no-matches');
-  if (noMatch) noMatch.classList.toggle('hidden', anyVisible);
+  if (noMatch) noMatch.classList.toggle('hidden', anyLocVisible);
 }
 
 function renderWCItemCard(item, i) {
@@ -779,20 +1085,14 @@ function renderWCItemCard(item, i) {
   const expiryStr = formatExpiry(item.expiry);
   const borderCls = expired ? 'wc-item-card-expired' : expiring ? 'wc-item-card-expiring' : '';
   const qtyStr    = formatQty(item.qty, item.unit);
-  const locLine   = item.location
-    ? `<div class="wc-item-loc">&#128205; ${esc(item.location)}</div>` : '';
 
   return `<div class="wc-item-card ${borderCls}" id="wc-card-${i}">
-    <div class="wc-item-header">
-      <span class="wc-item-name">${esc(item.name || item.gtin)}</span>
-      ${badgeCls ? `<span class="badge ${badgeCls}">${expired ? 'Expired' : 'Soon'}</span>` : ''}
-    </div>
     <div class="wc-item-meta">
-      Qty: <strong>${qtyStr}</strong>
-      ${item.lot    ? ' &middot; Lot ' + esc(item.lot)    : ''}
-      ${expiryStr   ? ' &middot; ' + esc(expiryStr)       : ''}
+      ${item.lot ? 'LOT: <strong class="mono">' + esc(item.lot) + '</strong>' : '<em>No lot number</em>'}
+      ${expiryStr ? ' &nbsp;&middot;&nbsp; ' + esc(expiryStr) : ''}
+      &nbsp;&middot;&nbsp; Qty: <strong>${qtyStr}</strong>
+      ${badgeCls ? `&nbsp;<span class="badge ${badgeCls}">${expired ? 'Expired' : 'Soon'}</span>` : ''}
     </div>
-    ${locLine}
 
     <div class="wc-integrity-row">
       <span class="wc-row-label">Integrity</span>

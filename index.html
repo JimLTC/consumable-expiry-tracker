@@ -30,7 +30,17 @@
          ================================================================ -->
     <section id="tab-scan-in" class="tab active">
       <h2>Scan In</h2>
-      <p class="helper-text">Scan a barcode to log new stock arriving.</p>
+      <p class="helper-text">Restock an existing item by searching below, or scan / type a new one.</p>
+
+      <!-- Restock search: search existing items to skip re-typing name and ref -->
+      <div class="si-restock-section">
+        <input type="search" id="si-restock-search" class="si-search-input" placeholder="Search existing item by name or ref&hellip;" autocomplete="off">
+        <div id="si-restock-list" class="hidden"></div>
+        <div id="si-restock-selected" class="hidden si-restock-selected-bar">
+          <span class="si-restock-selected-name" id="si-restock-name"></span>
+          <button type="button" id="btn-si-restock-clear" class="btn-text">&#215; Change</button>
+        </div>
+      </div>
 
       <button id="btn-scan-in-start" class="btn-primary btn-scan">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -97,17 +107,28 @@
          ================================================================ -->
     <section id="tab-scan-out" class="tab">
       <h2>Scan Out</h2>
-      <p class="helper-text">Scan an item before using it. Shows expiry status.</p>
+      <p class="helper-text">Select an item to use, or scan its barcode.</p>
 
-      <button id="btn-scan-out-start" class="btn-primary btn-scan">
+      <!-- Default: manual selection panel -->
+      <div id="so-manual-panel">
+        <input type="search" id="so-search" class="so-search-input" placeholder="Search by name or ref&hellip;" autocomplete="off">
+        <div id="so-item-list"><p class="no-items">Loading&hellip;</p></div>
+        <div id="so-lot-step" class="hidden">
+          <button type="button" id="btn-so-lot-back" class="so-lot-step-back">&#8592; Back to item list</button>
+          <p class="so-lot-step-title">Select a lot to use:</p>
+          <div id="so-lot-list"></div>
+        </div>
+      </div>
+
+      <!-- Secondary: camera scan -->
+      <button id="btn-scan-out-start" class="btn-secondary btn-scan" style="margin-top:10px">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-        Scan Item
+        Or scan a barcode
       </button>
 
+      <!-- Status card shown after item selection -->
       <div id="scan-out-result" class="hidden">
-        <!-- Status card: OK / EXPIRING SOON / EXPIRED / NOT FOUND / NO STOCK -->
         <div id="so-status-card" class="card status-card"></div>
-
         <form id="form-scan-out" class="card hidden">
           <div class="field">
             <label for="so-qty">Quantity to remove</label>

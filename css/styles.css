@@ -1413,3 +1413,125 @@ input[readonly] {
 
 .wc-gtin-group .wc-item-card           { border-radius: 0; border-top: none; }
 .wc-gtin-group .wc-item-card:last-child { border-bottom-left-radius: var(--r); border-bottom-right-radius: var(--r); }
+
+/* =====================================================================
+   WEEKLY CHECK — CATALOG-DRIVEN ITEM GROUPS
+   ===================================================================== */
+
+.wc-catalog-item-group { margin-bottom: 12px; }
+
+.wc-catalog-item-header {
+  padding: 10px 14px 8px;
+  background: var(--bg3);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r) var(--r) 0 0;
+}
+.wc-catalog-item-group > .wc-item-card           { border-radius: 0; border-top: none; }
+.wc-catalog-item-group > .wc-no-stock            { border-radius: 0 0 var(--r) var(--r); border-top: none; }
+.wc-catalog-item-group > .wc-item-card:last-child { border-bottom-left-radius: var(--r); border-bottom-right-radius: var(--r); }
+
+.wc-catalog-item-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.wc-catalog-item-name { font-weight: 700; font-size: .9rem; flex: 1; min-width: 0; }
+.wc-catalog-item-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: .74rem;
+  color: var(--text2);
+  font-family: var(--mono);
+}
+.wc-catalog-item-ref  { color: var(--text3); }
+.wc-catalog-item-qty  { font-weight: 600; color: var(--text); }
+.wc-catalog-norm      { color: var(--text2); }
+
+.wc-no-stock {
+  padding: 10px 14px;
+  font-size: .82rem;
+  color: var(--text3);
+  font-style: italic;
+  background: var(--bg2);
+  border: 1.5px solid var(--border);
+}
+
+/* =====================================================================
+   NORM BADGES
+   ===================================================================== */
+
+.norm-badge {
+  display: inline-block;
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 99px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.norm-badge.norm-ok       { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-b); }
+.norm-badge.norm-low      { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-b); }
+.norm-badge.norm-critical { background: var(--red-bg);   color: var(--red);   border: 1px solid var(--red-b);   }
+
+/* =====================================================================
+   VOICE INPUT BUTTON
+   ===================================================================== */
+
+.wc-qty-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.voice-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 1.5px solid var(--border2);
+  border-radius: 50%;
+  background: var(--bg2);
+  color: var(--text2);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .12s, color .12s, border-color .12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.voice-btn:hover,
+.voice-btn:active { background: var(--accent-bg); color: var(--accent); border-color: var(--accent-b); }
+.voice-btn.voice-btn-active {
+  background: var(--red-bg);
+  color: var(--red);
+  border-color: var(--red-b);
+  animation: voice-pulse 1s ease-in-out infinite;
+}
+@keyframes voice-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: .55; }
+}
+
+/* =====================================================================
+   WEEKLY CHECK — ORDER LISTS IN SUMMARY
+   ===================================================================== */
+
+.wc-order-section { border-left: 3px solid var(--amber-b) !important; }
+
+.wc-order-item {
+  padding: 8px 0 6px;
+  border-bottom: 1px solid var(--border);
+}
+.wc-order-item:last-of-type { border-bottom: none; padding-bottom: 0; }
+.wc-order-item-name   { font-weight: 600; font-size: .88rem; margin-bottom: 2px; }
+.wc-order-item-detail { font-size: .74rem; color: var(--text3); font-family: var(--mono); }
+
+.wc-copy-btn {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  text-align: center;
+}

@@ -18,9 +18,10 @@
 // =====================================================================
 
 // --- Sheet names ---
-const ACTIVE_SHEET  = 'Active Inventory';
-const ARCHIVE_SHEET = 'Archive';
-const RECON_SHEET   = 'Reconciliation Log';
+const ACTIVE_SHEET   = 'Active Inventory';
+const ARCHIVE_SHEET  = 'Archive';
+const RECON_SHEET    = 'Reconciliation Log';
+const CATALOG_SHEET  = 'Item Catalog';
 
 // --- Column indices (0-based) for Active Inventory & Archive ---
 const C = {
@@ -35,6 +36,17 @@ const C = {
   MIN_QTY:      8,  // I: Min Qty (per-item low-stock alert threshold)
   LOCATION:     9,  // J: Shelf/drawer/cart identifier for weekly check grouping
   UNIT:        10   // K: Unit of measure (Box / Piece / Carton / …)
+};
+
+// --- Column indices (0-based) for Item Catalog ---
+const CC = {
+  REF:           0,  // A: Ref (matches GTIN/Ref in Active Inventory)
+  NAME:          1,  // B: Item Name
+  CATEGORY:      2,  // C: Category (Consumable / Implant)
+  NORM:          3,  // D: Norm (target stock level, expressed in Ordering Unit)
+  ORDERING_UNIT: 4,  // E: Ordering Unit (Box / Piece / Carton / Other)
+  PIECES_PER:    5,  // F: Pieces Per Unit (conversion factor)
+  LOCATION:      6   // G: Location (shelf/drawer/cart)
 };
 
 // Archive-only extra columns. K (Unit) is copied across from Active Inventory.
@@ -54,6 +66,8 @@ function doGet(e) {
     const action = (e.parameter && e.parameter.action) || '';
     if (action === 'getInventory') {
       result = getInventory();
+    } else if (action === 'getCatalog') {
+      result = getCatalog();
     } else if (action === 'lookupBatch') {
       result = lookupBatch(
         e.parameter.gtin   || '',
@@ -108,6 +122,27 @@ function jsonResponse(data) {
 // =====================================================================
 // BUSINESS LOGIC
 // =====================================================================
+
+/** Return all rows from Item Catalog as an array of catalog item objects. */
+function getCatalog() {
+  const sheet  = getSheet(CATALOG_SHEET);
+  const values = sheet.getDataRange().getValues();
+  const items  = [];
+  for (let i = 1; i < values.length; i++) {
+    const row = values[i];
+    if (!row[CC.REF]) continue;
+    items.push({
+      ref:          String(row[CC.REF]).trim(),
+      name:         String(row[CC.NAME]          || '').trim(),
+      category:     String(row[CC.CATEGORY]      || '').trim(),
+      norm:         Number(row[CC.NORM])          || 0,
+      orderingUnit: String(row[CC.ORDERING_UNIT] || 'Piece').trim(),
+      piecesPerUnit:Number(row[CC.PIECES_PER])   || 1,
+      location:     String(row[CC.LOCATION]      || '').trim()
+    });
+  }
+  return { success: true, items: items };
+}
 
 /** Return all rows from Active Inventory as an array of item objects. */
 function getInventory() {

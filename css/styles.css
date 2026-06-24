@@ -1191,3 +1191,225 @@ code {
   main { padding: 20px 24px; }
   .kpi-grid { grid-template-columns: repeat(4, 1fr); }
 }
+
+/* =====================================================================
+   SCAN IN — RESTOCK SEARCH
+   ===================================================================== */
+
+.si-restock-section { margin-bottom: 16px; }
+
+.si-search-input, .so-search-input {
+  width: 100%;
+  padding: 11px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  font-size: .95rem;
+  font-family: var(--sans);
+  background: var(--bg2);
+  color: var(--text);
+  -webkit-appearance: none;
+}
+.si-search-input:focus, .so-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.si-restock-list {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  margin-top: 4px;
+  background: var(--bg2);
+}
+.si-restock-row {
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+.si-restock-row:last-child { border-bottom: none; }
+.si-restock-row:hover, .si-restock-row:active { background: var(--accent-bg); }
+.si-restock-name { font-weight: 600; font-size: .88rem; }
+.si-restock-meta { font-size: .74rem; color: var(--text3); margin-top: 2px; font-family: var(--mono); }
+.si-restock-selected-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--green-bg);
+  border: 1.5px solid var(--green-b);
+  border-radius: var(--r);
+  margin-top: 8px;
+}
+.si-restock-selected-name {
+  font-weight: 600;
+  font-size: .88rem;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.btn-text {
+  background: none;
+  border: none;
+  color: var(--text2);
+  font-size: .82rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  white-space: nowrap;
+  font-family: var(--sans);
+}
+.btn-text:hover { color: var(--accent); }
+input[readonly] {
+  background: var(--bg3) !important;
+  color: var(--text2);
+  cursor: default;
+}
+
+/* =====================================================================
+   SCAN OUT — MANUAL PANEL
+   ===================================================================== */
+
+.so-item-list { margin-top: 4px; }
+
+.so-item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 13px 14px;
+  background: var(--bg2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  margin-bottom: 8px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color .12s;
+}
+.so-item-row:hover, .so-item-row:active { border-color: var(--accent); background: var(--accent-bg); }
+.so-item-row.row-expired  { border-left: 4px solid var(--red);   }
+.so-item-row.row-expiring { border-left: 4px solid var(--amber); }
+.so-item-name { font-weight: 600; font-size: .92rem; }
+.so-item-meta { font-size: .74rem; color: var(--text3); margin-top: 2px; }
+.so-item-arrow { color: var(--text3); font-size: 1.2rem; margin-left: 8px; flex-shrink: 0; }
+
+.so-lot-step { margin-top: 4px; }
+.so-lot-step-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: .84rem;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  background: none;
+  border: none;
+  margin-bottom: 12px;
+  font-family: var(--sans);
+}
+.so-lot-step-title {
+  font-size: .74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text2);
+  margin-bottom: 8px;
+}
+.so-lot-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 14px;
+  background: var(--bg2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  margin-bottom: 8px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color .12s;
+}
+.so-lot-row:hover, .so-lot-row:active { border-color: var(--accent); background: var(--accent-bg); }
+.so-lot-row.lot-expired  { border-left: 4px solid var(--red);   background: var(--red-bg);   }
+.so-lot-row.lot-expiring { border-left: 4px solid var(--amber); background: var(--amber-bg); }
+.so-lot-expiry { font-weight: 600; font-size: .9rem; }
+.so-lot-meta   { font-size: .74rem; color: var(--text3); margin-top: 2px; font-family: var(--mono); }
+
+/* =====================================================================
+   DASHBOARD — GROUPED INVENTORY (one card per GTIN)
+   ===================================================================== */
+
+.inv-lot-expand-btn {
+  background: none;
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  font-size: .72rem;
+  color: var(--text2);
+  cursor: pointer;
+  padding: 3px 8px;
+  margin-left: auto;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-family: var(--sans);
+}
+.inv-lot-expand-btn:hover { background: var(--bg3); }
+
+.inv-lots-list {
+  border-top: 1px solid var(--border);
+  margin-top: 10px;
+  padding-top: 4px;
+}
+.inv-lot-row {
+  padding: 8px 0 6px;
+  border-bottom: 1px solid var(--border);
+}
+.inv-lot-row:last-child { border-bottom: none; padding-bottom: 0; }
+.inv-lot-row-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+}
+.inv-lot-field {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.inv-lot-label {
+  font-size: .65rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text3);
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.inv-lot-value {
+  font-family: var(--mono);
+  font-size: .78rem;
+  color: var(--text);
+}
+.inv-lot-value-expiry-expired  { color: var(--red);   font-weight: 700; }
+.inv-lot-value-expiry-expiring { color: var(--amber); font-weight: 700; }
+
+/* =====================================================================
+   WEEKLY CHECK — GTIN SUB-GROUPS
+   ===================================================================== */
+
+.wc-gtin-group { margin-bottom: 10px; }
+
+.wc-gtin-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 14px;
+  background: var(--bg3);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r) var(--r) 0 0;
+}
+.wc-gtin-name { font-weight: 700; font-size: .9rem; flex: 1; min-width: 0; }
+.wc-gtin-meta { font-size: .75rem; color: var(--text2); white-space: nowrap; }
+
+.wc-gtin-group .wc-item-card           { border-radius: 0; border-top: none; }
+.wc-gtin-group .wc-item-card:last-child { border-bottom-left-radius: var(--r); border-bottom-right-radius: var(--r); }

@@ -902,6 +902,7 @@ function renderWCChecklist() {
   const filterBarHtml = `<div class="filter-bar" id="wc-filter-bar">
     <select class="filter-location" id="wc-filter-loc"><option value="">All locations</option>${locOptions}</select>
     <div class="filter-chips">
+      <button type="button" class="filter-chip" data-status="expired">Expired</button>
       <button type="button" class="filter-chip" data-status="expiring">Expiring Soon</button>
       <button type="button" class="filter-chip" data-status="below-norm">Below Norm</button>
       <button type="button" class="filter-chip" data-status="flagged">Flagged</button>
@@ -990,7 +991,7 @@ function renderWCChecklist() {
 function applyWCFilters() {
   const { joined, decisions } = state.weeklyCheck;
   const filters  = state.wcFilters;
-  if (!filters) return;
+  if (!filters || !joined) return;
   const todayStr = today();
 
   const active   = Boolean(filters.location) || filters.statuses.size > 0;
@@ -1008,17 +1009,16 @@ function applyWCFilters() {
       const wDays       = ji.catalogItem.expiryWarningDays || 14;
       const normPieces  = ji.catalogItem.norm * ji.catalogItem.piecesPerUnit;
       const isBelowNorm = normPieces > 0 && ji.totalPieces < normPieces;
-      const anyExpiring = ji.lots.some(lot => {
-        const expired = lot.expiry && lot.expiry < todayStr;
-        return !expired && lot.expiry && daysDiff(todayStr, lot.expiry) <= wDays;
-      });
-      const anyFlagged = ji.lots.some(lot => {
+      const anyExpired  = ji.lots.some(lot => lot.expiry && lot.expiry < todayStr);
+      const anyExpiring = !anyExpired && ji.lots.some(lot => lot.expiry && daysDiff(todayStr, lot.expiry) <= wDays);
+      const anyFlagged  = ji.lots.some(lot => {
         const dec = (lot._flatIdx !== undefined) ? decisions[lot._flatIdx] : null;
         return dec && dec.integrityStatus === 'flagged';
       });
       let any = false;
-      if (filters.statuses.has('below-norm') && isBelowNorm) any = true;
+      if (filters.statuses.has('expired')    && anyExpired)   any = true;
       if (filters.statuses.has('expiring')   && anyExpiring)  any = true;
+      if (filters.statuses.has('below-norm') && isBelowNorm)  any = true;
       if (filters.statuses.has('flagged')    && anyFlagged)   any = true;
       if (!any) pass = false;
     }

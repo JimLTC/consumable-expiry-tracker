@@ -941,7 +941,7 @@ function renderWCChecklist() {
         ? '<div class="wc-no-stock">Not in stock &mdash; check if order is needed</div>'
         : lots.map(lot => renderWCItemCard(lot, lot._flatIdx, wDays)).join('');
 
-      locHtml += `<div class="wc-catalog-item-group" data-jiidx="${jiIdx}">
+      locHtml += `<div class="wc-catalog-item-group" data-ref="${esc(catalogItem.ref)}">
         <div class="wc-catalog-item-header">
           <div class="wc-catalog-item-title">
             <span class="wc-catalog-item-name">${esc(catalogItem.name || catalogItem.ref)}</span>
@@ -995,23 +995,29 @@ function renderWCChecklist() {
 
 function applyWCFilters() {
   const { joined, decisions } = state.weeklyCheck;
-  const filters  = state.wcFilters;
-  if (!filters || !joined) return;
-  const todayStr  = today();
-  const wcRoot    = document.getElementById('wc-container');
+  const filters = state.wcFilters;
+  if (!filters || !joined || !joined.length) return;
+  const todayStr = today();
+  const wcRoot   = document.getElementById('wc-container');
   if (!wcRoot) return;
+
+  // Build a lookup map: ref → joined item
+  const jiByRef = new Map(joined.map(ji => [ji.catalogItem.ref, ji]));
 
   const active   = Boolean(filters.location) || filters.statuses.size > 0;
   const clearBtn = wcRoot.querySelector('#wc-filter-clear');
   if (clearBtn) clearBtn.classList.toggle('hidden', !active);
 
-  joined.forEach((ji, jiIdx) => {
-    const groupEl = wcRoot.querySelector(`.wc-catalog-item-group[data-jiidx="${jiIdx}"]`);
-    if (!groupEl) return;
+  // Iterate DOM elements directly — no index matching needed
+  wcRoot.querySelectorAll('.wc-catalog-item-group[data-ref]').forEach(groupEl => {
+    const ji = jiByRef.get(groupEl.dataset.ref);
+    if (!ji) return;
     let pass = true;
+
     if (filters.location) {
       if ((ji.catalogItem.location || '__unassigned__') !== filters.location) pass = false;
     }
+
     if (pass && filters.statuses.size > 0) {
       const wDays       = ji.catalogItem.expiryWarningDays || 14;
       const normPieces  = ji.catalogItem.norm * ji.catalogItem.piecesPerUnit;
@@ -1029,12 +1035,14 @@ function applyWCFilters() {
       if (filters.statuses.has('flagged')    && anyFlagged)   any = true;
       if (!any) pass = false;
     }
+
     groupEl.classList.toggle('hidden', !pass);
   });
 
   let anyLocVisible = false;
   wcRoot.querySelectorAll('.wc-location-group').forEach(locGroup => {
-    const anyVisible = Array.from(locGroup.querySelectorAll('.wc-catalog-item-group')).some(g => !g.classList.contains('hidden'));
+    const anyVisible = Array.from(locGroup.querySelectorAll('.wc-catalog-item-group'))
+      .some(g => !g.classList.contains('hidden'));
     locGroup.classList.toggle('hidden', !anyVisible);
     if (anyVisible) anyLocVisible = true;
   });

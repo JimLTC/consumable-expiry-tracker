@@ -967,7 +967,12 @@ function renderWCChecklist() {
   items.forEach((_, i) => wireWCCard(i));
   document.getElementById('btn-wc-finish').addEventListener('click', submitWeeklyCheck);
 
-  document.getElementById('wc-filter-loc').addEventListener('change', e => {
+  const filterLocEl = container.querySelector('#wc-filter-loc');
+  filterLocEl.addEventListener('change', e => {
+    state.wcFilters.location = e.target.value;
+    applyWCFilters();
+  });
+  filterLocEl.addEventListener('input', e => {
     state.wcFilters.location = e.target.value;
     applyWCFilters();
   });
@@ -980,9 +985,9 @@ function renderWCChecklist() {
       applyWCFilters();
     });
   });
-  document.getElementById('wc-filter-clear').addEventListener('click', () => {
+  container.querySelector('#wc-filter-clear').addEventListener('click', () => {
     state.wcFilters = { location: '', statuses: new Set() };
-    document.getElementById('wc-filter-loc').value = '';
+    filterLocEl.value = '';
     container.querySelectorAll('#wc-filter-bar .filter-chip').forEach(c => c.classList.remove('selected'));
     applyWCFilters();
   });
@@ -992,14 +997,16 @@ function applyWCFilters() {
   const { joined, decisions } = state.weeklyCheck;
   const filters  = state.wcFilters;
   if (!filters || !joined) return;
-  const todayStr = today();
+  const todayStr  = today();
+  const wcRoot    = document.getElementById('wc-container');
+  if (!wcRoot) return;
 
   const active   = Boolean(filters.location) || filters.statuses.size > 0;
-  const clearBtn = document.getElementById('wc-filter-clear');
+  const clearBtn = wcRoot.querySelector('#wc-filter-clear');
   if (clearBtn) clearBtn.classList.toggle('hidden', !active);
 
   joined.forEach((ji, jiIdx) => {
-    const groupEl = document.querySelector(`.wc-catalog-item-group[data-jiidx="${jiIdx}"]`);
+    const groupEl = wcRoot.querySelector(`.wc-catalog-item-group[data-jiidx="${jiIdx}"]`);
     if (!groupEl) return;
     let pass = true;
     if (filters.location) {
@@ -1026,12 +1033,12 @@ function applyWCFilters() {
   });
 
   let anyLocVisible = false;
-  document.querySelectorAll('.wc-location-group').forEach(locGroup => {
+  wcRoot.querySelectorAll('.wc-location-group').forEach(locGroup => {
     const anyVisible = Array.from(locGroup.querySelectorAll('.wc-catalog-item-group')).some(g => !g.classList.contains('hidden'));
     locGroup.classList.toggle('hidden', !anyVisible);
     if (anyVisible) anyLocVisible = true;
   });
-  const noMatch = document.getElementById('wc-no-matches');
+  const noMatch = wcRoot.querySelector('#wc-no-matches');
   if (noMatch) noMatch.classList.toggle('hidden', anyLocVisible);
 }
 

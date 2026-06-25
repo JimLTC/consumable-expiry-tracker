@@ -1297,3 +1297,111 @@ code {
   main { padding: 20px 24px; }
   .kpi-grid { grid-template-columns: repeat(4, 1fr); }
 }
+
+/* =====================================================================
+   ADD NEW ITEM PANEL (In tab)
+   ===================================================================== */
+
+.add-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+.add-item-header strong {
+  font-family: var(--heading);
+  font-size: .9rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* =====================================================================
+   EDIT CATALOG ITEM MODAL
+   ===================================================================== */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(28,43,74,.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+.modal-card {
+  background: var(--surface);
+  border-radius: var(--r-xl) var(--r-xl) 0 0;
+  width: 100%;
+  max-width: 680px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lift);
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid var(--outline-subtle);
+  flex-shrink: 0;
+}
+
+.modal-title {
+  font-family: var(--heading);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 1.4rem;
+  color: var(--text3);
+  cursor: pointer;
+  padding: 2px 6px;
+  line-height: 1;
+  border-radius: 4px;
+}
+.modal-close:hover { color: var(--text); background: var(--surface-variant); }
+
+.modal-body {
+  padding: 16px 20px 24px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.modal-body .btn-primary,
+.modal-body .btn-secondary { margin-top: 10px; }
+
+.edit-ref-display {
+  font-family: var(--heading);
+  font-size: .78rem;
+  color: var(--text3);
+  margin-bottom: 14px;
+}
+
+/* =====================================================================
+   INVENTORY CARD — EDIT BUTTON
+   ===================================================================== */
+
+.inv-card-edit-btn {
+  background: none;
+  border: 1.5px solid var(--outline);
+  border-radius: var(--r-sm);
+  color: var(--text3);
+  cursor: pointer;
+  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background .1s, border-color .1s, color .1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.inv-card-edit-btn:hover { background: var(--primary-container); border-color: var(--primary); color: var(--primary); }

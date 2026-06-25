@@ -40,13 +40,14 @@ const C = {
 
 // --- Column indices (0-based) for Item Catalog ---
 const CC = {
-  REF:           0,  // A: Ref (matches GTIN/Ref in Active Inventory)
-  NAME:          1,  // B: Item Name
-  CATEGORY:      2,  // C: Category (Consumable / Implant)
-  NORM:          3,  // D: Norm (target stock level, expressed in Ordering Unit)
-  ORDERING_UNIT: 4,  // E: Ordering Unit (Box / Piece / Carton / Other)
-  PIECES_PER:    5,  // F: Pieces Per Unit (conversion factor)
-  LOCATION:      6   // G: Location (shelf/drawer/cart)
+  REF:            0,  // A: Ref (matches GTIN/Ref in Active Inventory)
+  NAME:           1,  // B: Item Name
+  CATEGORY:       2,  // C: Category (Consumable / Implant)
+  NORM:           3,  // D: Norm (target stock level, expressed in Ordering Unit)
+  ORDERING_UNIT:  4,  // E: Ordering Unit (Box / Piece / Carton / Other)
+  PIECES_PER:     5,  // F: Pieces Per Unit (conversion factor)
+  LOCATION:       6,  // G: Location (shelf/drawer/cart)
+  EXPIRY_WARNING: 7   // H: Expiry Warning Days (default 14)
 };
 
 // Archive-only extra columns. K (Unit) is copied across from Active Inventory.
@@ -104,6 +105,10 @@ function doPost(e) {
       result = reconcile(params);
     } else if (action === 'setMinQty') {
       result = setMinQty(params);
+    } else if (action === 'addCatalogItem') {
+      result = addCatalogItem(params);
+    } else if (action === 'updateCatalogItem') {
+      result = updateCatalogItem(params);
     } else {
       result = { success: false, error: 'Unknown action: ' + action };
     }
@@ -132,13 +137,14 @@ function getCatalog() {
     const row = values[i];
     if (!row[CC.REF]) continue;
     items.push({
-      ref:          String(row[CC.REF]).trim(),
-      name:         String(row[CC.NAME]          || '').trim(),
-      category:     String(row[CC.CATEGORY]      || '').trim(),
-      norm:         Number(row[CC.NORM])          || 0,
-      orderingUnit: String(row[CC.ORDERING_UNIT] || 'Piece').trim(),
-      piecesPerUnit:Number(row[CC.PIECES_PER])   || 1,
-      location:     String(row[CC.LOCATION]      || '').trim()
+      ref:               String(row[CC.REF]).trim(),
+      name:              String(row[CC.NAME]            || '').trim(),
+      category:          String(row[CC.CATEGORY]        || '').trim(),
+      norm:              Number(row[CC.NORM])            || 0,
+      orderingUnit:      String(row[CC.ORDERING_UNIT]   || 'Piece').trim(),
+      piecesPerUnit:     Number(row[CC.PIECES_PER])     || 1,
+      location:          String(row[CC.LOCATION]        || '').trim(),
+      expiryWarningDays: Number(row[CC.EXPIRY_WARNING]) || 14
     });
   }
   return { success: true, items: items };
@@ -334,6 +340,76 @@ function setMinQty(params) {
     const rowNum = findBatchRow(sheet, gtin, lot, expiry);
     if (rowNum === -1) return { success: false, error: 'Batch not found' };
     sheet.getRange(rowNum, C.MIN_QTY + 1).setValue(minQty);
+    return { success: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Add a new item to the Item Catalog. Returns error if REF already exists. */
+function addCatalogItem(params) {
+  const ref               = String(params.ref               || '').trim();
+  const name              = String(params.name              || '').trim();
+  const category          = String(params.category          || 'Consumable').trim();
+  const norm              = Number(params.norm)             || 0;
+  const orderingUnit      = String(params.orderingUnit      || 'Piece').trim();
+  const piecesPerUnit     = Number(params.piecesPerUnit)    || 1;
+  const location          = String(params.location          || '').trim();
+  const expiryWarningDays = Number(params.expiryWarningDays)|| 14;
+
+  if (!ref)  return { success: false, error: 'REF is required' };
+  if (!name) return { success: false, error: 'Item Name is required' };
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return { success: false, error: 'Server busy — please try again' };
+
+  try {
+    const sheet  = getSheet(CATALOG_SHEET);
+    const values = sheet.getDataRange().getValues();
+    for (let i = 1; i < values.length; i++) {
+      if (String(values[i][CC.REF]).trim() === ref) {
+        return { success: false, error: 'An item with this REF already exists' };
+      }
+    }
+    sheet.appendRow([ref, name, category, norm, orderingUnit, piecesPerUnit, location, expiryWarningDays]);
+    return { success: true };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Update an existing catalog item by REF. REF itself cannot change. */
+function updateCatalogItem(params) {
+  const ref               = String(params.ref               || '').trim();
+  const name              = String(params.name              || '').trim();
+  const category          = String(params.category          || 'Consumable').trim();
+  const norm              = Number(params.norm)             || 0;
+  const orderingUnit      = String(params.orderingUnit      || 'Piece').trim();
+  const piecesPerUnit     = Number(params.piecesPerUnit)    || 1;
+  const location          = String(params.location          || '').trim();
+  const expiryWarningDays = Number(params.expiryWarningDays)|| 14;
+
+  if (!ref) return { success: false, error: 'REF is required' };
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return { success: false, error: 'Server busy — please try again' };
+
+  try {
+    const sheet  = getSheet(CATALOG_SHEET);
+    const values = sheet.getDataRange().getValues();
+    let rowNum   = -1;
+    for (let i = 1; i < values.length; i++) {
+      if (String(values[i][CC.REF]).trim() === ref) { rowNum = i + 1; break; }
+    }
+    if (rowNum === -1) return { success: false, error: 'Item not found in catalog' };
+
+    sheet.getRange(rowNum, CC.NAME           + 1).setValue(name);
+    sheet.getRange(rowNum, CC.CATEGORY       + 1).setValue(category);
+    sheet.getRange(rowNum, CC.NORM           + 1).setValue(norm);
+    sheet.getRange(rowNum, CC.ORDERING_UNIT  + 1).setValue(orderingUnit);
+    sheet.getRange(rowNum, CC.PIECES_PER     + 1).setValue(piecesPerUnit);
+    sheet.getRange(rowNum, CC.LOCATION       + 1).setValue(location);
+    sheet.getRange(rowNum, CC.EXPIRY_WARNING + 1).setValue(expiryWarningDays);
     return { success: true };
   } finally {
     lock.releaseLock();

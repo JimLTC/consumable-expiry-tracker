@@ -26,7 +26,7 @@
          Select from the Item Catalog, then fill in lot / expiry / qty.
          ================================================================ -->
     <section id="tab-scan-in" class="tab active">
-      <h2>Stock In</h2>
+      <h2>In</h2>
       <p class="helper-text">Search the Item Catalog to select what you're stocking in.</p>
 
       <div class="catalog-picker">
@@ -40,6 +40,57 @@
           <span id="si-catalog-selected-name"></span>
           <button type="button" id="btn-si-catalog-clear" class="chip-clear-btn">&times; Change</button>
         </div>
+      </div>
+
+      <!-- Add New Item form (shown when catalog search returns no results) -->
+      <div id="si-add-item-panel" class="card hidden">
+        <div class="add-item-header">
+          <strong>Add New Item to Catalog</strong>
+          <button type="button" id="btn-add-item-cancel" class="chip-clear-btn">&times; Cancel</button>
+        </div>
+        <form id="form-add-catalog-item">
+          <div class="field">
+            <label for="ai-ref">REF *</label>
+            <input type="text" id="ai-ref" placeholder="e.g. ABC-12345" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="ai-name">Item Name *</label>
+            <input type="text" id="ai-name" placeholder="e.g. Sterile Gloves S" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="ai-category">Category</label>
+            <select id="ai-category">
+              <option value="Consumable">Consumable</option>
+              <option value="Implant">Implant</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ai-ordering-unit">Ordering Unit</label>
+            <select id="ai-ordering-unit">
+              <option value="Piece">Piece</option>
+              <option value="Box">Box</option>
+              <option value="Carton">Carton</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="ai-pieces-per">Pieces Per Unit</label>
+            <input type="number" id="ai-pieces-per" value="1" min="1" max="9999" inputmode="numeric">
+          </div>
+          <div class="field">
+            <label for="ai-norm">Norm (target stock, in ordering units)</label>
+            <input type="number" id="ai-norm" value="0" min="0" inputmode="numeric">
+          </div>
+          <div class="field">
+            <label for="ai-location">Location</label>
+            <input type="text" id="ai-location" placeholder="e.g. Shelf A2" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="ai-expiry-warning">Warn before expiry (days)</label>
+            <input type="number" id="ai-expiry-warning" value="14" min="1" max="365" inputmode="numeric">
+          </div>
+          <button type="submit" id="btn-add-item-submit" class="btn-primary">Add to Catalog &amp; Select</button>
+        </form>
       </div>
 
       <form id="form-scan-in" class="card">
@@ -77,7 +128,7 @@
          Select an item manually, confirm use, decrement stock.
          ================================================================ -->
     <section id="tab-scan-out" class="tab">
-      <h2>Stock Out</h2>
+      <h2>Out</h2>
       <p class="helper-text">Search and select the item you are using.</p>
 
       <div id="so-manual-panel">
@@ -132,26 +183,6 @@
       <div id="wc-container"></div>
     </section>
 
-    <!-- ================================================================
-         TAB: SETTINGS
-         ================================================================ -->
-    <section id="tab-settings" class="tab">
-      <h2>Settings</h2>
-
-      <div class="card">
-        <div class="field">
-          <label for="set-expiry-days">Warn me this many days before expiry</label>
-          <input type="number" id="set-expiry-days" value="14" min="1" max="365" inputmode="numeric">
-        </div>
-        <div class="field">
-          <label for="set-low-stock">Low-stock alert when quantity is at or below</label>
-          <input type="number" id="set-low-stock" value="2" min="0" max="999" inputmode="numeric">
-        </div>
-        <button id="btn-save-settings" class="btn-primary">Save Settings</button>
-        <p class="small" style="margin-top:10px">Settings are stored on this device only.</p>
-      </div>
-
-    </section>
 
   </main>
 
@@ -203,16 +234,6 @@
       <span class="nav-label">Weekly</span>
     </button>
 
-    <button class="nav-btn" data-tab="settings">
-      <span class="nav-icon-pill">
-        <!-- Settings: gear -->
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-        </svg>
-      </span>
-      <span class="nav-label">Settings</span>
-    </button>
 
   </nav>
 
@@ -220,6 +241,62 @@
        TOAST NOTIFICATION
        ================================================================ -->
   <div id="toast" class="toast hidden"></div>
+
+  <!-- ================================================================
+       EDIT CATALOG ITEM MODAL
+       ================================================================ -->
+  <div id="edit-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span id="edit-modal-title" class="modal-title">Edit Catalog Item</span>
+        <button type="button" id="btn-edit-modal-close" class="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <form id="form-edit-catalog">
+          <input type="hidden" id="edit-ref">
+          <p class="edit-ref-display" id="edit-ref-display"></p>
+          <div class="field">
+            <label for="edit-name">Item Name *</label>
+            <input type="text" id="edit-name" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="edit-category">Category</label>
+            <select id="edit-category">
+              <option value="Consumable">Consumable</option>
+              <option value="Implant">Implant</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="edit-ordering-unit">Ordering Unit</label>
+            <select id="edit-ordering-unit">
+              <option value="Piece">Piece</option>
+              <option value="Box">Box</option>
+              <option value="Carton">Carton</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="edit-pieces-per">Pieces Per Unit</label>
+            <input type="number" id="edit-pieces-per" value="1" min="1" max="9999" inputmode="numeric">
+          </div>
+          <div class="field">
+            <label for="edit-norm">Norm (target stock, in ordering units)</label>
+            <input type="number" id="edit-norm" value="0" min="0" inputmode="numeric">
+          </div>
+          <div class="field">
+            <label for="edit-location">Location</label>
+            <input type="text" id="edit-location" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="edit-expiry-warning">Warn before expiry (days)</label>
+            <input type="number" id="edit-expiry-warning" value="14" min="1" max="365" inputmode="numeric">
+          </div>
+          <button type="submit" id="btn-edit-save" class="btn-primary">Save Changes</button>
+          <button type="button" id="btn-edit-cancel" class="btn-secondary">Cancel</button>
+        </form>
+      </div>
+    </div>
+  </div>
 
   <!-- Scripts — load config first so API_URL is defined before api.js runs -->
   <script src="js/config.js"></script>

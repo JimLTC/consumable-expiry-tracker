@@ -940,7 +940,7 @@ function renderWCChecklist() {
         ? '<div class="wc-no-stock">Not in stock &mdash; check if order is needed</div>'
         : lots.map(lot => renderWCItemCard(lot, lot._flatIdx, wDays)).join('');
 
-      locHtml += `<div class="wc-catalog-item-group" data-ref="${esc(catalogItem.ref)}">
+      locHtml += `<div class="wc-catalog-item-group" data-ref="${esc(catalogItem.ref)}" data-jiidx="${jiIdx}">
         <div class="wc-catalog-item-header">
           <div class="wc-catalog-item-title">
             <span class="wc-catalog-item-name">${esc(catalogItem.name || catalogItem.ref)}</span>
@@ -1000,25 +1000,22 @@ function applyWCFilters() {
   const wcRoot   = document.getElementById('wc-container');
   if (!wcRoot) return;
 
-  // Build a lookup map: ref → joined item
-  const jiByRef = new Map(joined.map(ji => [ji.catalogItem.ref, ji]));
-
   const active   = Boolean(filters.location) || filters.statuses.size > 0;
   const clearBtn = wcRoot.querySelector('#wc-filter-clear');
   if (clearBtn) clearBtn.classList.toggle('hidden', !active);
 
-  // Iterate DOM elements directly — no index matching needed
-  wcRoot.querySelectorAll('.wc-catalog-item-group[data-ref]').forEach(groupEl => {
-    const ji = jiByRef.get(groupEl.dataset.ref);
-    if (!ji) return;
+  // Mirror applyDashboardFilters: iterate data, find DOM by numeric index
+  joined.forEach((ji, jiIdx) => {
+    const groupEl = wcRoot.querySelector(`.wc-catalog-item-group[data-jiidx="${jiIdx}"]`);
+    if (!groupEl) return;
     let pass = true;
 
     if (filters.location) {
-      // Filter by lot location (where stock actually is), same as Dashboard
-      const hasLoc = ji.lots.length === 0
-        ? filters.location === '__unassigned__'
-        : ji.lots.some(l => (l.location || '__unassigned__') === filters.location);
-      if (!hasLoc) pass = false;
+      // Match the exact location used for grouping (first lot's location)
+      const itemLoc = ji.lots.length === 0
+        ? '__unassigned__'
+        : (ji.lots[0].location || '__unassigned__');
+      if (itemLoc !== filters.location) pass = false;
     }
 
     if (pass && filters.statuses.size > 0) {
@@ -1028,7 +1025,7 @@ function applyWCFilters() {
       const anyExpired  = ji.lots.some(lot => lot.expiry && lot.expiry < todayStr);
       const anyExpiring = !anyExpired && ji.lots.some(lot => lot.expiry && daysDiff(todayStr, lot.expiry) <= wDays);
       const anyFlagged  = ji.lots.some(lot => {
-        const dec = (lot._flatIdx !== undefined) ? decisions[lot._flatIdx] : null;
+        const dec = lot._flatIdx !== undefined ? decisions[lot._flatIdx] : null;
         return dec && dec.integrityStatus === 'flagged';
       });
       let any = false;

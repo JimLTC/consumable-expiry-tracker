@@ -954,7 +954,7 @@ function renderWCChecklist() {
   }
   html += `<div id="wc-finish-area" class="hidden"><button id="btn-wc-finish" class="btn-primary">Finish Check</button></div>`;
   container.innerHTML = html;
-  items.forEach((_, i) => wireWCCard(i));
+  items.forEach((_, i) => { try { wireWCCard(i); } catch (e) { console.error('wireWCCard(' + i + '):', e); } });
   document.getElementById('btn-wc-finish').addEventListener('click', submitWeeklyCheck);
 
   container.querySelectorAll('.wc-location-header').forEach(header => {

@@ -10,7 +10,7 @@ const state = {
   soGroups:        null,
   dashboardGroups: null,
   dashboardFilters: null,
-  wcFilters:       null
+  wcFilters:       null   // unused — WC now uses accordion, not filter
 };
 
 // =====================================================================
@@ -880,7 +880,6 @@ async function loadWeeklyCheck() {
     joined, items: flatLots,
     decisions: flatLots.map(() => ({ integrityStatus: null, flagNote: '', qtyMode: null, physicalQty: null, reason: '', done: false }))
   };
-  state.wcFilters = { location: '' };
   renderWCChecklist();
 }
 
@@ -888,9 +887,7 @@ function renderWCChecklist() {
   const { joined, items } = state.weeklyCheck;
   const container = document.getElementById('wc-container');
 
-  // Group by the catalog item's location (column G) — the only location field
-  // that is reliably populated. Stock-in does not capture a per-lot location,
-  // so lot.location is empty; the catalog "home shelf" is what the walk-through follows.
+  // Group by catalog item location (column G)
   const locationGroups = new Map();
   joined.forEach((ji, jiIdx) => {
     const loc = (ji.catalogItem.location || '').trim() || '__unassigned__';
@@ -903,21 +900,15 @@ function renderWCChecklist() {
     if (b === '__unassigned__') return -1;
     return a.localeCompare(b);
   });
-  const locOptions = sortedLocKeys.map(loc => {
-    const label = loc === '__unassigned__' ? '(Unassigned)' : loc;
-    return `<option value="${esc(loc)}">${esc(label)}</option>`;
-  }).join('');
-  const filterBarHtml = `<div class="filter-bar" id="wc-filter-bar">
-    <select class="filter-location" id="wc-filter-loc"><option value="">All locations</option>${locOptions}</select>
-    <button type="button" class="filter-clear hidden" id="wc-filter-clear">Clear</button>
-  </div>`;
 
-  let html = filterBarHtml + '<p class="no-items hidden" id="wc-no-matches">No items match the current filter.</p>';
+  const chevron = `<svg class="wc-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+  let html = '';
   for (const locKey of sortedLocKeys) {
     const locItems = locationGroups.get(locKey);
     if (!locItems) continue;
     const label     = locKey === '__unassigned__' ? 'Unassigned' : locKey;
-    const totalLots = locItems.reduce((n, { ji }) => n + ji.lots.length, 0);
+    const itemCount = locItems.length;
     let locHtml = '';
     for (const { ji, jiIdx } of locItems) {
       const { catalogItem, lots, totalPieces } = ji;
@@ -953,8 +944,12 @@ function renderWCChecklist() {
       </div>`;
     }
     html += `<div class="wc-location-group" data-loc-key="${esc(locKey)}">
-      <div class="wc-location-header">${esc(label)}<span class="wc-location-count">${totalLots}</span></div>
-      ${locHtml}
+      <div class="wc-location-header">
+        <span class="wc-location-label">${esc(label)}</span>
+        <span class="wc-location-count">${itemCount}</span>
+        ${chevron}
+      </div>
+      <div class="wc-location-body">${locHtml}</div>
     </div>`;
   }
   html += `<div id="wc-finish-area" class="hidden"><button id="btn-wc-finish" class="btn-primary">Finish Check</button></div>`;
@@ -962,48 +957,11 @@ function renderWCChecklist() {
   items.forEach((_, i) => wireWCCard(i));
   document.getElementById('btn-wc-finish').addEventListener('click', submitWeeklyCheck);
 
-  const filterLocEl = container.querySelector('#wc-filter-loc');
-  filterLocEl.addEventListener('change', e => {
-    state.wcFilters.location = e.target.value;
-    applyWCFilters();
+  container.querySelectorAll('.wc-location-header').forEach(header => {
+    header.addEventListener('click', () => {
+      header.closest('.wc-location-group').classList.toggle('open');
+    });
   });
-  container.querySelector('#wc-filter-clear').addEventListener('click', () => {
-    state.wcFilters = { location: '' };
-    filterLocEl.value = '';
-    applyWCFilters();
-  });
-}
-
-function applyWCFilters() {
-  const { joined } = state.weeklyCheck;
-  const loc = state.wcFilters ? state.wcFilters.location : '';
-  if (!joined || !joined.length) return;
-  const wcRoot = document.getElementById('wc-container');
-  if (!wcRoot) return;
-
-  const clearBtn = wcRoot.querySelector('#wc-filter-clear');
-  if (clearBtn) clearBtn.classList.toggle('hidden', !loc);
-
-  joined.forEach((ji, jiIdx) => {
-    const groupEl = wcRoot.querySelector(`.wc-catalog-item-group[data-jiidx="${jiIdx}"]`);
-    if (!groupEl) return;
-    let show = true;
-    if (loc) {
-      const itemLoc = (ji.catalogItem.location || '').trim() || '__unassigned__';
-      show = itemLoc === loc;
-    }
-    groupEl.classList.toggle('hidden', !show);
-  });
-
-  let anyVisible = false;
-  wcRoot.querySelectorAll('.wc-location-group').forEach(locGroup => {
-    const hasVisible = Array.from(locGroup.querySelectorAll('.wc-catalog-item-group'))
-      .some(g => !g.classList.contains('hidden'));
-    locGroup.classList.toggle('hidden', !hasVisible);
-    if (hasVisible) anyVisible = true;
-  });
-  const noMatch = wcRoot.querySelector('#wc-no-matches');
-  if (noMatch) noMatch.classList.toggle('hidden', anyVisible);
 }
 
 function renderWCItemCard(item, i, wDays) {

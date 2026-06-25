@@ -1006,6 +1006,8 @@ main {
   padding: 10px 4px 8px;
   border-bottom: 2px solid var(--primary-container);
   margin-bottom: 8px;
+  cursor: pointer;
+  user-select: none;
 }
 .wc-location-count {
   background: var(--primary-container);
@@ -1015,6 +1017,15 @@ main {
   padding: 1px 8px;
   border-radius: 10px;
 }
+.wc-chevron {
+  margin-left: auto;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+  color: var(--text3);
+}
+.wc-location-group.open .wc-chevron { transform: rotate(180deg); }
+.wc-location-body { display: none; }
+.wc-location-group.open .wc-location-body { display: block; }
 
 .wc-item-card {
   background: var(--surface);

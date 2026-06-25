@@ -888,16 +888,15 @@ function renderWCChecklist() {
   const { joined, items } = state.weeklyCheck;
   const container = document.getElementById('wc-container');
 
-  // Build location options from LOT locations (set during scan-in), same as Dashboard
-  const lotLocSet = new Set();
-  joined.forEach(ji => {
-    if (ji.lots.length > 0) {
-      ji.lots.forEach(lot => lotLocSet.add(lot.location || '__unassigned__'));
-    } else {
-      lotLocSet.add('__unassigned__');
-    }
+  // Group by first lot's location (where stock is stored) — same source as Dashboard
+  const locationGroups = new Map();
+  joined.forEach((ji, jiIdx) => {
+    const loc = ji.lots.length > 0 ? (ji.lots[0].location || '__unassigned__') : '__unassigned__';
+    if (!locationGroups.has(loc)) locationGroups.set(loc, []);
+    locationGroups.get(loc).push({ ji, jiIdx });
   });
-  const sortedLocKeys = Array.from(lotLocSet).sort((a, b) => {
+
+  const sortedLocKeys = Array.from(locationGroups.keys()).sort((a, b) => {
     if (a === '__unassigned__') return 1;
     if (b === '__unassigned__') return -1;
     return a.localeCompare(b);
@@ -916,13 +915,6 @@ function renderWCChecklist() {
     </div>
     <button type="button" class="filter-clear hidden" id="wc-filter-clear">Clear</button>
   </div>`;
-
-  const locationGroups = new Map();
-  joined.forEach((ji, jiIdx) => {
-    const loc = ji.catalogItem.location || '__unassigned__';
-    if (!locationGroups.has(loc)) locationGroups.set(loc, []);
-    locationGroups.get(loc).push({ ji, jiIdx });
-  });
 
   let html = filterBarHtml + '<p class="no-items hidden" id="wc-no-matches">No items match the current filter.</p>';
   for (const locKey of sortedLocKeys) {

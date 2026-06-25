@@ -23,7 +23,7 @@ const ARCHIVE_SHEET  = 'Archive';
 const RECON_SHEET    = 'Reconciliation Log';
 const CATALOG_SHEET  = 'Item Catalog';
 
-// --- Column indices (0-based) for Active Inventory & Archive ---
+// --- Column indices (0-based) for Active Inventory ---
 const C = {
   GTIN:         0,  // A: GTIN/Ref
   LOT:          1,  // B: Lot
@@ -33,9 +33,8 @@ const C = {
   DATE_LOGGED:  5,  // F: Date First Logged
   LAST_UPDATED: 6,  // G: Last Updated
   ACTION_BY:    7,  // H: Last Action By
-  MIN_QTY:      8,  // I: Min Qty (per-item low-stock alert threshold)
-  LOCATION:     9,  // J: Shelf/drawer/cart identifier for weekly check grouping
-  UNIT:        10   // K: Unit of measure (Box / Piece / Carton / …)
+  LOCATION:     8,  // I: Shelf/drawer/cart identifier
+  UNIT:         9   // J: Unit of measure (Box / Piece / Carton / …)
 };
 
 // --- Column indices (0-based) for Item Catalog ---
@@ -50,11 +49,10 @@ const CC = {
   EXPIRY_WARNING: 7   // H: Expiry Warning Days (default 14)
 };
 
-// Archive-only extra columns. K (Unit) is copied across from Active Inventory.
+// Archive-only extra columns (appended after Active Inventory columns A–J).
 const CA = {
-  ARCHIVED_DATE:  8,  // I
-  ARCHIVE_REASON: 9,  // J
-  UNIT:          10   // K: Unit (copied from Active Inventory at archive time)
+  ARCHIVED_DATE:  10,  // K
+  ARCHIVE_REASON: 11   // L
 };
 
 // =====================================================================
@@ -103,8 +101,6 @@ function doPost(e) {
       result = scanOut(params);
     } else if (action === 'reconcile') {
       result = reconcile(params);
-    } else if (action === 'setMinQty') {
-      result = setMinQty(params);
     } else if (action === 'addCatalogItem') {
       result = addCatalogItem(params);
     } else if (action === 'updateCatalogItem') {
@@ -168,7 +164,7 @@ function lookupBatch(gtin, lot, expiry) {
   const sheet  = getSheet(ACTIVE_SHEET);
   const rowNum = findBatchRow(sheet, gtin, lot, expiry);
   if (rowNum === -1) return { success: true, found: false };
-  const row = sheet.getRange(rowNum, 1, 1, 8).getValues()[0];
+  const row = sheet.getRange(rowNum, 1, 1, 10).getValues()[0];
   return { success: true, found: true, item: rowToItem(row) };
 }
 
@@ -183,7 +179,6 @@ function scanIn(params) {
   const qty      = Number(params.qty)     || 1;
   const itemName = String(params.itemName || '').trim();
   const actionBy = String(params.actionBy || '').trim();
-  const minQty   = params.minQty !== undefined ? Number(params.minQty) : null;
   const location = String(params.location || '').trim();
   const unit     = String(params.unit     || '').trim();
 
@@ -209,9 +204,8 @@ function scanIn(params) {
       if (unit)      sheet.getRange(rowNum, C.UNIT + 1).setValue(unit);
       return { success: true, action: 'updated', newQty: newQty };
     } else {
-      // New batch — append row (11 columns: A–K)
-      const minQtyVal = (minQty !== null && minQty >= 0) ? minQty : '';
-      sheet.appendRow([gtin, lot, expiry, qty, itemName, now, now, actionBy, minQtyVal, location, unit]);
+      // New batch — append row (10 columns: A–J)
+      sheet.appendRow([gtin, lot, expiry, qty, itemName, now, now, actionBy, location, unit]);
       return { success: true, action: 'created', newQty: qty };
     }
   } finally {
@@ -242,7 +236,7 @@ function scanOut(params) {
 
     if (rowNum === -1) return { success: false, error: 'not_found' };
 
-    const row        = activeSheet.getRange(rowNum, 1, 1, 8).getValues()[0];
+    const row        = activeSheet.getRange(rowNum, 1, 1, 10).getValues()[0];
     const currentQty = Number(row[C.QTY]) || 0;
 
     if (currentQty <= 0) return { success: false, error: 'no_stock' };
@@ -256,8 +250,8 @@ function scanOut(params) {
 
     // Auto-archive: qty now 0 AND expiry date is already past
     if (newQty === 0 && expiry && expiry < todayStr()) {
-      // Read 11 columns so Unit (K) carries over to the Archive sheet.
-      const freshRow = activeSheet.getRange(rowNum, 1, 1, 11).getValues()[0];
+      // Read all 10 columns so Location and Unit carry over to the Archive sheet.
+      const freshRow = activeSheet.getRange(rowNum, 1, 1, 10).getValues()[0];
       doArchiveRow(activeSheet, archiveSheet, rowNum, freshRow, 'qty=0 and expired');
       return { success: true, newQty: 0, archived: true };
     }
@@ -297,7 +291,7 @@ function reconcile(params) {
 
     if (rowNum === -1) return { success: false, error: 'Batch not found in Active Inventory' };
 
-    const row       = activeSheet.getRange(rowNum, 1, 1, 11).getValues()[0];
+    const row       = activeSheet.getRange(rowNum, 1, 1, 10).getValues()[0];
     const systemQty = Number(row[C.QTY]) || 0;
     const variance  = physicalCount - systemQty;
     const now       = new Date();
@@ -317,30 +311,6 @@ function reconcile(params) {
     if (adjustedBy) activeSheet.getRange(rowNum, C.ACTION_BY + 1).setValue(adjustedBy);
 
     return { success: true, systemQty: systemQty, physicalCount: physicalCount, variance: variance };
-  } finally {
-    lock.releaseLock();
-  }
-}
-
-/** Update the per-item low-stock alert threshold (column I). */
-function setMinQty(params) {
-  const gtin   = String(params.gtin   || '').trim();
-  const lot    = String(params.lot    || '').trim();
-  const expiry = String(params.expiry || '').trim();
-  const minQty = Number(params.minQty);
-
-  if (!gtin)        return { success: false, error: 'GTIN is required' };
-  if (isNaN(minQty) || minQty < 0) return { success: false, error: 'minQty must be 0 or higher' };
-
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) return { success: false, error: 'Server busy — please try again' };
-
-  try {
-    const sheet  = getSheet(ACTIVE_SHEET);
-    const rowNum = findBatchRow(sheet, gtin, lot, expiry);
-    if (rowNum === -1) return { success: false, error: 'Batch not found' };
-    sheet.getRange(rowNum, C.MIN_QTY + 1).setValue(minQty);
-    return { success: true };
   } finally {
     lock.releaseLock();
   }
@@ -495,12 +465,10 @@ function findBatchRow(sheet, gtin, lot, expiry) {
 
 /**
  * Copy a row to Archive and delete it from Active Inventory.
- * Archive schema: A–H mirror Active Inventory, I = Archived Date,
- * J = Archive Reason, K = Unit (carried over from Active Inventory column K).
+ * Archive schema: A–J mirror Active Inventory, K = Archived Date, L = Archive Reason.
  */
 function doArchiveRow(activeSheet, archiveSheet, rowNum, rowData, reason) {
-  const unit = String((rowData[C.UNIT] !== undefined ? rowData[C.UNIT] : '') || '').trim();
-  const archiveRow = rowData.slice(0, 8).concat([new Date(), reason, unit]);
+  const archiveRow = rowData.slice(0, 10).concat([new Date(), reason]);
   archiveSheet.appendRow(archiveRow);
   activeSheet.deleteRow(rowNum);
 }
@@ -516,7 +484,6 @@ function rowToItem(row) {
     dateLogged:  normalizeDateTime(row[C.DATE_LOGGED]),
     lastUpdated: normalizeDateTime(row[C.LAST_UPDATED]),
     actionBy:    String(row[C.ACTION_BY]).trim(),
-    minQty:      Number(row[C.MIN_QTY]) || 0,
     location:    String(row[C.LOCATION] || '').trim(),
     unit:        String(row[C.UNIT] || '').trim()
   };

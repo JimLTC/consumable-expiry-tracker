@@ -991,40 +991,48 @@ main {
    WEEKLY CHECK
    ===================================================================== */
 
-.wc-location-group { margin-bottom: 10px; }
+.wc-location-group {
+  margin-bottom: 12px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,.10);
+}
 
 .wc-location-header {
   display: flex;
   align-items: center;
   gap: 8px;
   font-family: var(--heading);
-  font-size: .72rem;
+  font-size: .75rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .07em;
-  color: var(--text2);
-  padding: 10px 4px 8px;
-  border-bottom: 2px solid var(--primary-container);
-  margin-bottom: 8px;
+  color: #fff;
+  background: var(--primary);
+  padding: 13px 14px;
   cursor: pointer;
   user-select: none;
 }
 .wc-location-count {
-  background: var(--primary-container);
-  color: var(--primary);
+  background: rgba(255,255,255,.25);
+  color: #fff;
   font-size: .68rem;
   font-weight: 700;
-  padding: 1px 8px;
+  padding: 2px 9px;
   border-radius: 10px;
 }
 .wc-chevron {
   margin-left: auto;
   flex-shrink: 0;
   transition: transform 0.2s ease;
-  color: var(--text3);
+  color: rgba(255,255,255,.8);
 }
 .wc-location-group.open .wc-chevron { transform: rotate(180deg); }
-.wc-location-body { display: none; }
+.wc-location-body {
+  display: none;
+  background: var(--surface);
+  padding: 10px 10px 4px;
+}
 .wc-location-group.open .wc-location-body { display: block; }
 
 .wc-item-card {

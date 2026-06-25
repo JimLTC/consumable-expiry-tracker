@@ -910,7 +910,8 @@ function renderWCChecklist() {
   const filterBarHtml = `<div class="filter-bar" id="wc-filter-bar">
     <select class="filter-location" id="wc-filter-loc"><option value="">All locations</option>${locOptions}</select>
     <button type="button" class="filter-clear hidden" id="wc-filter-clear">Clear</button>
-  </div>`;
+  </div>
+  <p style="font-size:11px;color:#888;margin:4px 0 8px;padding:0 4px">DEBUG: ${joined.length} items · locations: ${sortedLocKeys.map(k => k==='__unassigned__'?'(none)':k).join(', ') || 'none found'}</p>`;
 
   let html = filterBarHtml + '<p class="no-items hidden" id="wc-no-matches">No items match the current filter.</p>';
   for (const locKey of sortedLocKeys) {

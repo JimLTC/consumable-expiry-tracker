@@ -888,10 +888,12 @@ function renderWCChecklist() {
   const { joined, items } = state.weeklyCheck;
   const container = document.getElementById('wc-container');
 
-  // Group by first lot's location (where stock is stored) — same source as Dashboard
+  // Group by the catalog item's location (column G) — the only location field
+  // that is reliably populated. Stock-in does not capture a per-lot location,
+  // so lot.location is empty; the catalog "home shelf" is what the walk-through follows.
   const locationGroups = new Map();
   joined.forEach((ji, jiIdx) => {
-    const loc = ji.lots.length > 0 ? (ji.lots[0].location || '__unassigned__') : '__unassigned__';
+    const loc = (ji.catalogItem.location || '').trim() || '__unassigned__';
     if (!locationGroups.has(loc)) locationGroups.set(loc, []);
     locationGroups.get(loc).push({ ji, jiIdx });
   });
@@ -987,7 +989,7 @@ function applyWCFilters() {
     if (!groupEl) return;
     let show = true;
     if (loc) {
-      const itemLoc = ji.lots.length === 0 ? '__unassigned__' : (ji.lots[0].location || '__unassigned__');
+      const itemLoc = (ji.catalogItem.location || '').trim() || '__unassigned__';
       show = itemLoc === loc;
     }
     groupEl.classList.toggle('hidden', !show);

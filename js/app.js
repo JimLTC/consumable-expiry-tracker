@@ -888,9 +888,16 @@ function renderWCChecklist() {
   const { joined, items } = state.weeklyCheck;
   const container = document.getElementById('wc-container');
 
-  const catalogLocs = new Set();
-  joined.forEach(ji => catalogLocs.add(ji.catalogItem.location || '__unassigned__'));
-  const sortedLocKeys = Array.from(catalogLocs).sort((a, b) => {
+  // Build location options from LOT locations (set during scan-in), same as Dashboard
+  const lotLocSet = new Set();
+  joined.forEach(ji => {
+    if (ji.lots.length > 0) {
+      ji.lots.forEach(lot => lotLocSet.add(lot.location || '__unassigned__'));
+    } else {
+      lotLocSet.add('__unassigned__');
+    }
+  });
+  const sortedLocKeys = Array.from(lotLocSet).sort((a, b) => {
     if (a === '__unassigned__') return 1;
     if (b === '__unassigned__') return -1;
     return a.localeCompare(b);
@@ -1015,7 +1022,11 @@ function applyWCFilters() {
     let pass = true;
 
     if (filters.location) {
-      if ((ji.catalogItem.location || '__unassigned__') !== filters.location) pass = false;
+      // Filter by lot location (where stock actually is), same as Dashboard
+      const hasLoc = ji.lots.length === 0
+        ? filters.location === '__unassigned__'
+        : ji.lots.some(l => (l.location || '__unassigned__') === filters.location);
+      if (!hasLoc) pass = false;
     }
 
     if (pass && filters.statuses.size > 0) {

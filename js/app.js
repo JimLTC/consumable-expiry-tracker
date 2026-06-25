@@ -880,7 +880,7 @@ async function loadWeeklyCheck() {
     joined, items: flatLots,
     decisions: flatLots.map(() => ({ integrityStatus: null, flagNote: '', qtyMode: null, physicalQty: null, reason: '', done: false }))
   };
-  state.wcFilters = { location: '', statuses: new Set() };
+  state.wcFilters = { location: '' };
   renderWCChecklist();
 }
 
@@ -907,12 +907,6 @@ function renderWCChecklist() {
   }).join('');
   const filterBarHtml = `<div class="filter-bar" id="wc-filter-bar">
     <select class="filter-location" id="wc-filter-loc"><option value="">All locations</option>${locOptions}</select>
-    <div class="filter-chips">
-      <button type="button" class="filter-chip" data-status="expired">Expired</button>
-      <button type="button" class="filter-chip" data-status="expiring">Expiring Soon</button>
-      <button type="button" class="filter-chip" data-status="below-norm">Below Norm</button>
-      <button type="button" class="filter-chip" data-status="flagged">Flagged</button>
-    </div>
     <button type="button" class="filter-clear hidden" id="wc-filter-clear">Clear</button>
   </div>`;
 
@@ -971,83 +965,43 @@ function renderWCChecklist() {
     state.wcFilters.location = e.target.value;
     applyWCFilters();
   });
-  filterLocEl.addEventListener('input', e => {
-    state.wcFilters.location = e.target.value;
-    applyWCFilters();
-  });
-  container.querySelectorAll('#wc-filter-bar .filter-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const key = chip.dataset.status;
-      const set = state.wcFilters.statuses;
-      if (set.has(key)) set.delete(key); else set.add(key);
-      chip.classList.toggle('selected', set.has(key));
-      applyWCFilters();
-    });
-  });
   container.querySelector('#wc-filter-clear').addEventListener('click', () => {
-    state.wcFilters = { location: '', statuses: new Set() };
+    state.wcFilters = { location: '' };
     filterLocEl.value = '';
-    container.querySelectorAll('#wc-filter-bar .filter-chip').forEach(c => c.classList.remove('selected'));
     applyWCFilters();
   });
 }
 
 function applyWCFilters() {
-  const { joined, decisions } = state.weeklyCheck;
-  const filters = state.wcFilters;
-  if (!filters || !joined || !joined.length) return;
-  const todayStr = today();
-  const wcRoot   = document.getElementById('wc-container');
+  const { joined } = state.weeklyCheck;
+  const loc = state.wcFilters ? state.wcFilters.location : '';
+  if (!joined || !joined.length) return;
+  const wcRoot = document.getElementById('wc-container');
   if (!wcRoot) return;
 
-  const active   = Boolean(filters.location) || filters.statuses.size > 0;
   const clearBtn = wcRoot.querySelector('#wc-filter-clear');
-  if (clearBtn) clearBtn.classList.toggle('hidden', !active);
+  if (clearBtn) clearBtn.classList.toggle('hidden', !loc);
 
-  // Mirror applyDashboardFilters: iterate data, find DOM by numeric index
   joined.forEach((ji, jiIdx) => {
     const groupEl = wcRoot.querySelector(`.wc-catalog-item-group[data-jiidx="${jiIdx}"]`);
     if (!groupEl) return;
-    let pass = true;
-
-    if (filters.location) {
-      // Match the exact location used for grouping (first lot's location)
-      const itemLoc = ji.lots.length === 0
-        ? '__unassigned__'
-        : (ji.lots[0].location || '__unassigned__');
-      if (itemLoc !== filters.location) pass = false;
+    let show = true;
+    if (loc) {
+      const itemLoc = ji.lots.length === 0 ? '__unassigned__' : (ji.lots[0].location || '__unassigned__');
+      show = itemLoc === loc;
     }
-
-    if (pass && filters.statuses.size > 0) {
-      const wDays       = ji.catalogItem.expiryWarningDays || 14;
-      const normPieces  = ji.catalogItem.norm * ji.catalogItem.piecesPerUnit;
-      const isBelowNorm = normPieces > 0 && ji.totalPieces < normPieces;
-      const anyExpired  = ji.lots.some(lot => lot.expiry && lot.expiry < todayStr);
-      const anyExpiring = !anyExpired && ji.lots.some(lot => lot.expiry && daysDiff(todayStr, lot.expiry) <= wDays);
-      const anyFlagged  = ji.lots.some(lot => {
-        const dec = lot._flatIdx !== undefined ? decisions[lot._flatIdx] : null;
-        return dec && dec.integrityStatus === 'flagged';
-      });
-      let any = false;
-      if (filters.statuses.has('expired')    && anyExpired)   any = true;
-      if (filters.statuses.has('expiring')   && anyExpiring)  any = true;
-      if (filters.statuses.has('below-norm') && isBelowNorm)  any = true;
-      if (filters.statuses.has('flagged')    && anyFlagged)   any = true;
-      if (!any) pass = false;
-    }
-
-    groupEl.classList.toggle('hidden', !pass);
+    groupEl.classList.toggle('hidden', !show);
   });
 
-  let anyLocVisible = false;
+  let anyVisible = false;
   wcRoot.querySelectorAll('.wc-location-group').forEach(locGroup => {
-    const anyVisible = Array.from(locGroup.querySelectorAll('.wc-catalog-item-group'))
+    const hasVisible = Array.from(locGroup.querySelectorAll('.wc-catalog-item-group'))
       .some(g => !g.classList.contains('hidden'));
-    locGroup.classList.toggle('hidden', !anyVisible);
-    if (anyVisible) anyLocVisible = true;
+    locGroup.classList.toggle('hidden', !hasVisible);
+    if (hasVisible) anyVisible = true;
   });
   const noMatch = wcRoot.querySelector('#wc-no-matches');
-  if (noMatch) noMatch.classList.toggle('hidden', anyLocVisible);
+  if (noMatch) noMatch.classList.toggle('hidden', anyVisible);
 }
 
 function renderWCItemCard(item, i, wDays) {
@@ -1109,7 +1063,6 @@ function wireWCCard(i) {
         state.weeklyCheck.decisions[i].flagNote = '';
       }
       updateWCItemDone(i);
-      if (state.wcFilters?.statuses?.has('flagged')) applyWCFilters();
     });
   });
 

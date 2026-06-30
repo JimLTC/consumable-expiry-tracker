@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Consumables Tracker</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=20260625h">
+  <link rel="stylesheet" href="css/styles.css?v=20260630a">
 </head>
 <body>
 
@@ -84,6 +84,22 @@
           <div class="field">
             <label for="ai-location">Location</label>
             <input type="text" id="ai-location" placeholder="e.g. Shelf A2" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="ai-company">Company</label>
+            <input type="text" id="ai-company" placeholder="e.g. Johnson &amp; Johnson" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="ai-order-type">Order Type</label>
+            <select id="ai-order-type">
+              <option value="Order Form">Order Form</option>
+              <option value="EPR">EPR</option>
+              <option value="Consigned">Consigned</option>
+              <option value="OMS">OMS</option>
+              <option value="ENT">ENT</option>
+              <option value="Inform SCM">Inform SCM</option>
+              <option value="Do Not Order">Do Not Order</option>
+            </select>
           </div>
           <div class="field">
             <label for="ai-expiry-warning">Warn before expiry (days)</label>
@@ -183,6 +199,15 @@
       <div id="wc-container"></div>
     </section>
 
+    <!-- ================================================================
+         TAB: HISTORY
+         Most-recent-first list of all Weekly Check sessions.
+         ================================================================ -->
+    <section id="tab-history" class="tab">
+      <h2>History</h2>
+      <p class="helper-text">Most recent checks shown first.</p>
+      <div id="history-container"></div>
+    </section>
 
   </main>
 
@@ -234,6 +259,15 @@
       <span class="nav-label">Weekly</span>
     </button>
 
+    <button class="nav-btn" data-tab="history">
+      <span class="nav-icon-pill">
+        <!-- History: clock icon -->
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+      </span>
+      <span class="nav-label">History</span>
+    </button>
 
   </nav>
 
@@ -288,6 +322,22 @@
             <input type="text" id="edit-location" autocomplete="off">
           </div>
           <div class="field">
+            <label for="edit-company">Company</label>
+            <input type="text" id="edit-company" placeholder="e.g. Johnson &amp; Johnson" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="edit-order-type">Order Type</label>
+            <select id="edit-order-type">
+              <option value="Order Form">Order Form</option>
+              <option value="EPR">EPR</option>
+              <option value="Consigned">Consigned</option>
+              <option value="OMS">OMS</option>
+              <option value="ENT">ENT</option>
+              <option value="Inform SCM">Inform SCM</option>
+              <option value="Do Not Order">Do Not Order</option>
+            </select>
+          </div>
+          <div class="field">
             <label for="edit-expiry-warning">Warn before expiry (days)</label>
             <input type="number" id="edit-expiry-warning" value="14" min="1" max="365" inputmode="numeric">
           </div>
@@ -299,9 +349,9 @@
   </div>
 
   <!-- Scripts — load config first so API_URL is defined before api.js runs -->
-  <script src="js/config.js?v=20260625h"></script>
-  <script src="js/api.js?v=20260625h"></script>
-  <script src="js/app.js?v=20260625h"></script>
+  <script src="js/config.js?v=20260630a"></script>
+  <script src="js/api.js?v=20260630a"></script>
+  <script src="js/app.js?v=20260630a"></script>
 
 </body>
 </html>

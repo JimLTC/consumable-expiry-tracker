@@ -4,13 +4,14 @@
 
 const state = {
   scanOutItem:     null,
-  weeklyCheck:     { items: [], decisions: [] },
+  weeklyCheck:     { items: [], decisions: [], joined: [], checkedBy: '' },
   siCatalogItems:  null,
   catalogMap:      null,
   soGroups:        null,
   dashboardGroups: null,
   dashboardFilters: null,
-  wcFilters:       null   // unused — WC now uses accordion, not filter
+  wcFilters:       null,
+  history:         { rows: [], filters: { location: '', search: '' } }
 };
 
 // =====================================================================
@@ -24,6 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupDashboard();
   setupReconcile();
   setupEditModal();
+  setupHistory();
 });
 
 // =====================================================================
@@ -40,6 +42,7 @@ function setupNav() {
       document.getElementById('tab-' + tab).classList.add('active');
       if (tab === 'dashboard') loadDashboard();
       if (tab === 'scan-out')  loadScanOutTab();
+      if (tab === 'history')   loadHistory();
     });
   });
 }
@@ -186,7 +189,9 @@ async function submitAddCatalogItem() {
     orderingUnit:      document.getElementById('ai-ordering-unit').value || 'Piece',
     piecesPerUnit:     parseInt(document.getElementById('ai-pieces-per').value, 10) || 1,
     location:          v('ai-location'),
-    expiryWarningDays: parseInt(document.getElementById('ai-expiry-warning').value, 10) || 14
+    expiryWarningDays: parseInt(document.getElementById('ai-expiry-warning').value, 10) || 14,
+    company:           v('ai-company'),
+    orderType:         document.getElementById('ai-order-type').value || 'Order Form'
   });
   resetButton(btn, 'Add to Catalog & Select');
 
@@ -547,6 +552,16 @@ async function loadDashboard() {
     if (normPcs > 0 && g.totalQty > 0 && g.totalQty < normPcs) lowCount++;
   });
 
+  const attentionCount = expiredCount + soonCount + lowCount;
+  const attentionParts = [
+    expiredCount > 0  ? expiredCount + ' expired'      : '',
+    soonCount > 0     ? soonCount    + ' expiring soon' : '',
+    lowCount > 0      ? lowCount     + ' below norm'    : ''
+  ].filter(Boolean);
+  const bannerHtml = attentionCount > 0
+    ? `<div class="banner-attention">&#9888; ${attentionCount} item${attentionCount === 1 ? '' : 's'} need${attentionCount === 1 ? 's' : ''} attention: ${attentionParts.join(', ')}</div>`
+    : '';
+
   const kpiHtml = `<div class="kpi-grid">
     <div class="kpi-card kpi-total"><div class="kpi-lbl">Active Items</div><div class="kpi-num">${state.dashboardGroups.length}</div></div>
     <div class="kpi-card kpi-expiring"><div class="kpi-lbl">Expiring Soon</div><div class="kpi-num">${soonCount}</div></div>
@@ -625,6 +640,9 @@ async function loadDashboard() {
     const cls         = anyExpired ? 'inv-card-expired' : anyExpiring ? 'inv-card-expiring' : 'inv-card-ok';
     const badge       = anyExpired ? '<span class="badge badge-expired">Expired</span>'
                       : anyExpiring ? '<span class="badge badge-expiring">Soon</span>' : '';
+    const cat            = state.catalogMap && state.catalogMap.get(g.gtin);
+    const consignedBadge = cat && cat.orderType === 'Consigned' ? '<span class="badge badge-consigned">Consigned</span>' : '';
+    const backOrderBadge = cat && cat.backOrder === true ? '<span class="badge badge-backorder">Back Order</span>' : '';
     const firstLot    = g.lots[0];
     const multiLot    = g.lots.length > 1;
     const locChip     = firstLot?.location ? `<div class="inv-card-loc">&#128205; ${esc(firstLot.location)}</div>` : '';
@@ -648,7 +666,7 @@ async function loadDashboard() {
     return `<div class="inv-card ${cls}" data-group-idx="${gIdx}">
       <div class="inv-card-header">
         <span class="inv-card-name">${esc(g.name)}</span>
-        ${badge}
+        ${badge}${consignedBadge}${backOrderBadge}
         ${expandBtn}
         ${editBtn}
       </div>
@@ -672,7 +690,7 @@ async function loadDashboard() {
     </div>
   </div>`;
 
-  content.innerHTML = kpiHtml + timelineHtml + chartHtml + inventoryHtml;
+  content.innerHTML = bannerHtml + kpiHtml + timelineHtml + chartHtml + inventoryHtml;
 
   document.getElementById('dash-filter-loc').addEventListener('change', e => {
     state.dashboardFilters.location = e.target.value;
@@ -785,6 +803,8 @@ function openEditModal(ref) {
   document.getElementById('edit-norm').value         = cat ? (cat.norm || 0) : 0;
   document.getElementById('edit-location').value     = cat ? (cat.location || '') : '';
   document.getElementById('edit-expiry-warning').value = cat ? (cat.expiryWarningDays || 14) : 14;
+  document.getElementById('edit-company').value      = cat ? (cat.company || '') : '';
+  document.getElementById('edit-order-type').value   = cat ? (cat.orderType || 'Order Form') : 'Order Form';
   show('edit-modal');
 }
 
@@ -807,7 +827,9 @@ async function submitEditCatalogItem() {
     orderingUnit:      document.getElementById('edit-ordering-unit').value || 'Piece',
     piecesPerUnit:     parseInt(document.getElementById('edit-pieces-per').value, 10) || 1,
     location:          v('edit-location'),
-    expiryWarningDays: parseInt(document.getElementById('edit-expiry-warning').value, 10) || 14
+    expiryWarningDays: parseInt(document.getElementById('edit-expiry-warning').value, 10) || 14,
+    company:           v('edit-company'),
+    orderType:         document.getElementById('edit-order-type').value || 'Order Form'
   });
   resetButton(btn, 'Save Changes');
 
@@ -878,9 +900,33 @@ async function loadWeeklyCheck() {
 
   state.weeklyCheck = {
     joined, items: flatLots,
-    decisions: flatLots.map(() => ({ integrityStatus: null, flagNote: '', qtyMode: null, physicalQty: null, reason: '', done: false }))
+    decisions: flatLots.map(() => ({ integrityStatus: null, flagNote: '', qtyMode: null, physicalQty: null, reason: '', done: false })),
+    checkedBy: ''
   };
-  renderWCChecklist();
+  showWCNamePrompt(renderWCChecklist);
+}
+
+function showWCNamePrompt(onSubmit) {
+  const container = document.getElementById('wc-container');
+  container.innerHTML = `
+    <div class="card">
+      <div class="field">
+        <label for="wc-checker-name">Who is doing this check?</label>
+        <input type="text" id="wc-checker-name" placeholder="Your name" autocomplete="off">
+      </div>
+      <button id="btn-wc-name-submit" class="btn-primary">Start Check</button>
+    </div>`;
+  const nameInput = document.getElementById('wc-checker-name');
+  nameInput.focus();
+  document.getElementById('btn-wc-name-submit').addEventListener('click', () => {
+    const name = nameInput.value.trim();
+    if (!name) { showToast('Please enter your name', 'error'); return; }
+    state.weeklyCheck.checkedBy = name;
+    onSubmit();
+  });
+  nameInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') document.getElementById('btn-wc-name-submit').click();
+  });
 }
 
 function renderWCChecklist() {
@@ -923,6 +969,9 @@ function renderWCChecklist() {
       const anyExpiring   = !anyExpired && lots.some(l => l.expiry && daysDiff(todayNow, l.expiry) <= wDays);
       const expiryBadge   = anyExpired ? '<span class="badge badge-expired">Expired</span>'
                           : anyExpiring ? '<span class="badge badge-expiring">Soon</span>' : '';
+      const orderTypeLabel = catalogItem.orderType
+        ? `<span class="wc-order-type-label">${esc(catalogItem.orderType)}</span>` : '';
+      const backOrderActive = catalogItem.backOrder === true;
       const lotsHtml = lots.length === 0
         ? '<div class="wc-no-stock">Not in stock &mdash; check if order is needed</div>'
         : lots.map(lot => renderWCItemCard(lot, lot._flatIdx, wDays)).join('');
@@ -933,12 +982,16 @@ function renderWCChecklist() {
             <span class="wc-catalog-item-name">${esc(catalogItem.name || catalogItem.ref)}</span>
             ${expiryBadge}
             ${normBadgeCls ? `<span class="norm-badge ${normBadgeCls}">${esc(normLabel)}</span>` : ''}
+            ${orderTypeLabel}
           </div>
           <div class="wc-catalog-item-details">
             <span class="wc-catalog-item-ref">REF: ${esc(catalogItem.ref)}</span>
             <span class="wc-catalog-item-qty">${piecesDisplay}</span>
             ${normDisplay ? `<span class="wc-catalog-norm">${esc(normDisplay)}</span>` : ''}
           </div>
+        </div>
+        <div class="wc-backorder-row">
+          <button type="button" class="wc-btn-backorder ${backOrderActive ? 'active' : ''}" data-jiidx="${jiIdx}" data-ref="${esc(catalogItem.ref)}">&#8987; ${backOrderActive ? 'On Back Order' : 'Mark Back Order'}</button>
         </div>
         ${lotsHtml}
       </div>`;
@@ -955,6 +1008,7 @@ function renderWCChecklist() {
   html += `<div id="wc-finish-area" class="hidden"><button id="btn-wc-finish" class="btn-primary">Finish Check</button></div>`;
   container.innerHTML = html;
   items.forEach((_, i) => { try { wireWCCard(i); } catch (e) { console.error('wireWCCard(' + i + '):', e); } });
+  wireWCGroupHeaders();
   document.getElementById('btn-wc-finish').addEventListener('click', submitWeeklyCheck);
 
   container.querySelectorAll('.wc-location-header').forEach(header => {
@@ -978,6 +1032,9 @@ function renderWCItemCard(item, i, wDays) {
       ${expiryStr ? ' &nbsp;&middot;&nbsp; ' + esc(expiryStr) : ''}
       &nbsp;&middot;&nbsp; Qty: <strong>${item.qty} pcs</strong>
       ${badgeCls ? `&nbsp;<span class="badge ${badgeCls}">${expired ? 'Expired' : 'Soon'}</span>` : ''}
+    </div>
+    <div class="wc-infonet-reminder hidden" id="wc-infonet-${i}">
+      &#128274; Check CGH Ortho Info Net for recall or alert status before proceeding.
     </div>
     <div class="wc-integrity-row">
       <span class="wc-row-label">Integrity</span>
@@ -1015,12 +1072,15 @@ function wireWCCard(i) {
       document.querySelectorAll(`.wc-btn-integrity[data-index="${i}"]`).forEach(b => b.classList.remove('selected-ok', 'selected-flag'));
       btn.classList.add(choice === 'ok' ? 'selected-ok' : 'selected-flag');
       const flagNoteEl = document.getElementById('wc-flag-note-' + i);
+      const infoNetEl = document.getElementById('wc-infonet-' + i);
       if (choice === 'flagged') {
         flagNoteEl.classList.remove('hidden');
         document.getElementById('wc-flag-input-' + i).focus();
+        if (infoNetEl) infoNetEl.classList.remove('hidden');
       } else {
         flagNoteEl.classList.add('hidden');
         state.weeklyCheck.decisions[i].flagNote = '';
+        if (infoNetEl) infoNetEl.classList.add('hidden');
       }
       updateWCItemDone(i);
     });
@@ -1054,6 +1114,26 @@ function wireWCCard(i) {
   document.getElementById('wc-reason-input-' + i).addEventListener('input', e => {
     state.weeklyCheck.decisions[i].reason = e.target.value.trim();
     updateWCItemDone(i);
+  });
+}
+
+function wireWCGroupHeaders() {
+  document.querySelectorAll('.wc-btn-backorder').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const jiIdx = parseInt(btn.dataset.jiidx, 10);
+      const ref   = btn.dataset.ref;
+      const isActive = btn.classList.contains('active');
+      const newVal = isActive ? '' : 'Yes';
+      btn.disabled = true;
+      const result = await api.post('setBackOrder', { ref, backOrder: newVal });
+      btn.disabled = false;
+      if (!result.success) { showToast('Error: ' + result.error, 'error'); return; }
+      const ji = state.weeklyCheck.joined[jiIdx];
+      if (ji) ji.catalogItem.backOrder = !isActive;
+      btn.classList.toggle('active', !isActive);
+      btn.innerHTML = `&#8987; ${!isActive ? 'On Back Order' : 'Mark Back Order'}`;
+      showToast(newVal ? 'Marked as Back Order' : 'Back Order cleared', 'success');
+    });
   });
 }
 
@@ -1102,6 +1182,23 @@ async function submitWeeklyCheck() {
   }
   if (errorCount > 0) { resetButton(btn, 'Finish Check'); return; }
   joined.forEach(ji => { ji.totalPieces = ji.lots.reduce((sum, lot) => sum + (lot.qty || 0), 0); });
+
+  // Log all checked items to Check History sheet
+  const checkedBy = state.weeklyCheck.checkedBy || 'Unknown';
+  const historyRows = items.map((item, i) => {
+    const dec = decisions[i];
+    const physQty = dec.qtyMode === 'matches' ? item.qty : (dec.physicalQty ?? item.qty);
+    return {
+      gtin: item.gtin,
+      name: item.name || item.gtin,
+      location: item.location || '',
+      qty: physQty,
+      integrityStatus: dec.integrityStatus === 'flagged' ? 'Flagged' : 'OK',
+      notes: dec.flagNote || dec.reason || ''
+    };
+  });
+  await api.post('logCheckHistory', { checkedBy, rows: historyRows });
+
   renderWCSummary(items, decisions, toSubmit, joined);
 }
 
@@ -1128,39 +1225,49 @@ function renderWCSummary(items, decisions, submitted, joined) {
     </div>`).join('')}
   </div>`;
 
-  const belowNorm   = (joined || []).filter(ji => { const np = ji.catalogItem.norm * ji.catalogItem.piecesPerUnit; return np > 0 && ji.totalPieces < np; });
-  const consumables = belowNorm.filter(ji => ji.catalogItem.category === 'Consumable');
-  const implants    = belowNorm.filter(ji => ji.catalogItem.category === 'Implant');
+  const belowNorm      = (joined || []).filter(ji => { const np = ji.catalogItem.norm * ji.catalogItem.piecesPerUnit; return np > 0 && ji.totalPieces < np; });
+  const orderFormItems = belowNorm.filter(ji => ji.catalogItem.orderType === 'Order Form');
+  const eprItems       = belowNorm.filter(ji => ji.catalogItem.orderType === 'EPR');
+  const informSCMItems = belowNorm.filter(ji => ji.catalogItem.orderType === 'Inform SCM');
+  const otherItems     = belowNorm.filter(ji => !['Order Form', 'EPR', 'Inform SCM'].includes(ji.catalogItem.orderType || ''));
 
-  function orderItemHtml(ji) {
+  function orderItemHtml(ji, showQty = true) {
     const normPieces = ji.catalogItem.norm * ji.catalogItem.piecesPerUnit;
     const shortUnits = Math.ceil((normPieces - ji.totalPieces) / (ji.catalogItem.piecesPerUnit || 1));
     return `<div class="wc-order-item">
       <div class="wc-order-item-name">${esc(ji.catalogItem.name || ji.catalogItem.ref)}</div>
-      <div class="wc-order-item-detail">REF: ${esc(ji.catalogItem.ref)} &middot; Have: ${fmtPieces(ji.totalPieces, ji.catalogItem.orderingUnit, ji.catalogItem.piecesPerUnit)} &middot; Order: ${shortUnits} ${esc(ji.catalogItem.orderingUnit)}</div>
+      <div class="wc-order-item-detail">REF: ${esc(ji.catalogItem.ref)} &middot; Have: ${fmtPieces(ji.totalPieces, ji.catalogItem.orderingUnit, ji.catalogItem.piecesPerUnit)}${showQty ? ` &middot; Order: ${shortUnits} ${esc(ji.catalogItem.orderingUnit)}` : ''}</div>
     </div>`;
   }
-  function generateCopyText(jiList, title) {
+  function generateCopyText(jiList, title, showQty = true) {
     return [title, '', ...jiList.map(ji => {
       const np = ji.catalogItem.norm * ji.catalogItem.piecesPerUnit;
       const su = Math.ceil((np - ji.totalPieces) / (ji.catalogItem.piecesPerUnit || 1));
-      return `- ${ji.catalogItem.name || ji.catalogItem.ref} (REF: ${ji.catalogItem.ref}): order ${su} ${ji.catalogItem.orderingUnit}`;
+      return showQty
+        ? `- ${ji.catalogItem.name || ji.catalogItem.ref} (REF: ${ji.catalogItem.ref}): order ${su} ${ji.catalogItem.orderingUnit}`
+        : `- ${ji.catalogItem.name || ji.catalogItem.ref} (REF: ${ji.catalogItem.ref})`;
     })].join('\n');
   }
+  function orderSectionHtml(items, title, copyKey, showQty = true) {
+    if (items.length === 0) return '';
+    return `<div class="wc-summary-section wc-order-section">
+      <div class="wc-summary-section-title">${esc(title)}</div>
+      <div style="padding:0 16px 4px">${items.map(ji => orderItemHtml(ji, showQty)).join('')}</div>
+      <div style="padding:0 16px 14px"><button type="button" class="btn-secondary wc-copy-btn" data-copy="${esc(copyKey)}">Copy to clipboard</button></div>
+    </div>`;
+  }
 
-  const topUpHtml  = consumables.length === 0 ? '' : `<div class="wc-summary-section wc-order-section">
-    <div class="wc-summary-section-title">Top-Up List (Consumables)</div>
-    <div style="padding:0 16px 4px">${consumables.map(orderItemHtml).join('')}</div>
-    <div style="padding:0 16px 14px"><button type="button" class="btn-secondary wc-copy-btn" data-copy="topup">Copy to clipboard</button></div>
-  </div>`;
-  const vendorHtml = implants.length === 0 ? '' : `<div class="wc-summary-section wc-order-section">
-    <div class="wc-summary-section-title">Vendor Order List (Implants)</div>
-    <div style="padding:0 16px 4px">${implants.map(orderItemHtml).join('')}</div>
-    <div style="padding:0 16px 14px"><button type="button" class="btn-secondary wc-copy-btn" data-copy="vendor">Copy to clipboard</button></div>
-  </div>`;
-  const noOrdersHtml = (consumables.length === 0 && implants.length === 0) ? `<div class="wc-summary-section">
+  const noOrdersHtml = belowNorm.length === 0 ? `<div class="wc-summary-section">
     <div class="wc-summary-section-title" style="color:var(--green)">&#10003; All stock at or above norm</div>
   </div>` : '';
+
+  const copyDataMap = {
+    'order-form': { list: orderFormItems, title: 'Order Form List', showQty: true },
+    'epr':        { list: eprItems,       title: 'EPR Order List',  showQty: true },
+    'inform-scm': { list: informSCMItems, title: 'Inform SCM List', showQty: false },
+    'other':      { list: otherItems,     title: 'Other Items',     showQty: true }
+  };
+  const dateStr = new Date().toLocaleDateString('en-GB');
 
   container.innerHTML = `<div class="wc-summary">
     <div class="wc-summary-title">Check Complete &mdash; ${esc(timeStr)}</div>
@@ -1170,17 +1277,20 @@ function renderWCSummary(items, decisions, submitted, joined) {
       <div class="wc-stat ${adjusted.length > 0 ? 'wc-stat-warn' : 'wc-stat-ok'}"><span class="wc-stat-num">${adjusted.length}</span><span class="wc-stat-lbl">Adjusted</span></div>
       <div class="wc-stat wc-stat-ok"><span class="wc-stat-num">${passed}</span><span class="wc-stat-lbl">All OK</span></div>
     </div>
-    ${flagList}${adjList}${noOrdersHtml}${topUpHtml}${vendorHtml}
+    ${flagList}${adjList}${noOrdersHtml}
+    ${orderSectionHtml(orderFormItems, 'Order Form List', 'order-form', true)}
+    ${orderSectionHtml(eprItems,       'EPR Order List',  'epr',        true)}
+    ${orderSectionHtml(informSCMItems, 'Inform SCM List', 'inform-scm', false)}
+    ${orderSectionHtml(otherItems,     'Other Items Below Norm', 'other', true)}
     <button id="btn-wc-done" class="btn-primary">Done</button>
   </div>`;
 
   container.querySelectorAll('.wc-copy-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const which   = btn.dataset.copy;
-      const dateStr = new Date().toLocaleDateString('en-GB');
-      const text    = which === 'topup'
-        ? generateCopyText(consumables, 'Top-Up List (Consumables) — ' + dateStr)
-        : generateCopyText(implants,    'Vendor Order List (Implants) — ' + dateStr);
+      const key  = btn.dataset.copy;
+      const data = copyDataMap[key];
+      if (!data) return;
+      const text = generateCopyText(data.list, data.title + ' — ' + dateStr, data.showQty);
       navigator.clipboard.writeText(text).then(
         () => showToast('Copied to clipboard', 'success'),
         () => showToast('Copy failed — please copy manually', 'error')
@@ -1188,6 +1298,104 @@ function renderWCSummary(items, decisions, submitted, joined) {
     });
   });
   document.getElementById('btn-wc-done').addEventListener('click', renderWCIdle);
+}
+
+// =====================================================================
+// HISTORY TAB
+// =====================================================================
+
+function setupHistory() {
+  // History loads on demand when the tab is opened
+}
+
+async function loadHistory() {
+  const container = document.getElementById('history-container');
+  if (!container) return;
+  state.history.filters = { location: '', search: '' };
+  container.innerHTML = '<p class="no-items">Loading&hellip;</p>';
+
+  const result = await api.get('getCheckHistory');
+  if (!result.success) {
+    container.innerHTML = `<p class="no-items">Error: ${esc(result.error)}</p>`;
+    return;
+  }
+  state.history.rows = result.rows || [];
+  renderHistoryList();
+}
+
+function renderHistoryList() {
+  const container = document.getElementById('history-container');
+  if (!container) return;
+  const { rows, filters } = state.history;
+
+  const locLower    = (filters.location || '').toLowerCase();
+  const searchLower = (filters.search   || '').toLowerCase();
+
+  const filtered = rows.filter(r => {
+    if (locLower    && !(r.location || '').toLowerCase().includes(locLower))    return false;
+    if (searchLower && !(r.name || '').toLowerCase().includes(searchLower)
+                    && !(r.ref  || '').toLowerCase().includes(searchLower))     return false;
+    return true;
+  });
+
+  const uniqueLocs = [...new Set(rows.map(r => r.location || '').filter(Boolean))].sort();
+  const locOptions = uniqueLocs.map(loc => `<option value="${esc(loc)}">${esc(loc)}</option>`).join('');
+
+  const filterHtml = `<div class="filter-bar">
+    <select class="filter-location" id="hist-filter-loc">
+      <option value="">All locations</option>${locOptions}
+    </select>
+    <div class="search-input-wrap" style="flex:1;margin-bottom:0">
+      <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="search" id="hist-search" class="search-input" placeholder="Search by name or REF&hellip;" value="${esc(filters.search)}" autocomplete="off">
+    </div>
+  </div>`;
+
+  // Group rows into sessions by timestamp (minute precision) + checkedBy
+  const sessionMap = new Map();
+  filtered.forEach(r => {
+    const key = (r.timestamp || '').slice(0, 16) + '\x00' + (r.checkedBy || '');
+    if (!sessionMap.has(key)) sessionMap.set(key, { timestamp: r.timestamp, checkedBy: r.checkedBy, rows: [] });
+    sessionMap.get(key).rows.push(r);
+  });
+
+  const sessions = Array.from(sessionMap.values());
+
+  const listHtml = sessions.length === 0
+    ? '<p class="no-items">No check history found.</p>'
+    : sessions.map(session => {
+        const dateStr = session.timestamp
+          ? new Date(session.timestamp.replace(' ', 'T')).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
+          : 'Unknown date';
+        const itemRows = session.rows.map(r => {
+          const isFlagged = (r.integrityStatus || '').toLowerCase() === 'flagged';
+          return `<div class="hist-item-row${isFlagged ? ' hist-item-flagged' : ''}">
+            <span class="hist-item-name">${esc(r.name || r.ref)}</span>
+            <span class="hist-item-detail">Qty: ${r.qtyRecorded ?? '—'}${isFlagged ? ' &nbsp;<span class="badge badge-expired" style="font-size:.58rem">Flagged</span>' : ''}</span>
+            ${r.notes ? `<span class="hist-item-note">${esc(r.notes)}</span>` : ''}
+          </div>`;
+        }).join('');
+        return `<div class="hist-session">
+          <div class="hist-session-header">
+            <span class="hist-session-date">${esc(dateStr)}</span>
+            <span class="hist-session-by">by ${esc(session.checkedBy || 'Unknown')}</span>
+            <span class="hist-session-count">${session.rows.length} item${session.rows.length === 1 ? '' : 's'}</span>
+          </div>
+          <div class="hist-session-items">${itemRows}</div>
+        </div>`;
+      }).join('');
+
+  container.innerHTML = filterHtml + listHtml;
+
+  document.getElementById('hist-filter-loc').value = filters.location;
+  document.getElementById('hist-filter-loc').addEventListener('change', e => {
+    state.history.filters.location = e.target.value;
+    renderHistoryList();
+  });
+  document.getElementById('hist-search').addEventListener('input', e => {
+    state.history.filters.search = e.target.value.trim();
+    renderHistoryList();
+  });
 }
 
 // =====================================================================

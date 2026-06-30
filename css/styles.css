@@ -1289,6 +1289,172 @@ main {
 .wc-copy-btn { display: block; width: 100%; margin-top: 12px; text-align: center; }
 
 /* =====================================================================
+   DASHBOARD — ATTENTION BANNER
+   ===================================================================== */
+
+.banner-attention {
+  background: var(--red-bg);
+  border: 1.5px solid var(--red-b);
+  border-radius: var(--r-lg);
+  padding: 13px 16px;
+  margin: 12px 0 4px;
+  font-family: var(--heading);
+  font-size: .84rem;
+  font-weight: 600;
+  color: var(--red);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: var(--shadow-1);
+}
+
+/* =====================================================================
+   BADGES — CONSIGNED + BACKORDER
+   ===================================================================== */
+
+.badge-consigned {
+  background: #EDE7F6;
+  color: #5E35B1;
+  border: 1px solid #B39DDB;
+}
+.badge-backorder {
+  background: var(--orange-bg);
+  color: var(--orange);
+  border: 1px solid var(--orange-b);
+}
+
+/* =====================================================================
+   WEEKLY CHECK — BACK ORDER TOGGLE
+   ===================================================================== */
+
+.wc-backorder-row {
+  padding: 6px 16px 8px;
+  background: var(--surface-variant);
+  border-top: 1px solid var(--outline-subtle);
+}
+
+.wc-btn-backorder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1.5px solid var(--outline);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text2);
+  font-size: .76rem;
+  font-weight: 600;
+  font-family: var(--heading);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .12s, border-color .12s, color .12s;
+}
+.wc-btn-backorder:active { opacity: .75; }
+.wc-btn-backorder.active {
+  background: var(--orange-bg);
+  border-color: var(--orange-b);
+  color: var(--orange);
+}
+.wc-btn-backorder:disabled { opacity: .5; cursor: default; }
+
+/* =====================================================================
+   WEEKLY CHECK — ORDER TYPE LABEL
+   ===================================================================== */
+
+.wc-order-type-label {
+  display: inline-block;
+  font-family: var(--heading);
+  font-size: .62rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 99px;
+  white-space: nowrap;
+  background: var(--primary-container);
+  color: var(--primary);
+  border: 1px solid rgba(25,103,210,.25);
+  flex-shrink: 0;
+}
+
+/* =====================================================================
+   WEEKLY CHECK — INFO NET REMINDER
+   ===================================================================== */
+
+.wc-infonet-reminder {
+  margin: 4px 0 8px;
+  padding: 9px 12px;
+  background: var(--amber-bg);
+  border: 1.5px solid var(--amber-b);
+  border-radius: var(--r-sm);
+  font-size: .8rem;
+  color: var(--text2);
+  font-weight: 500;
+}
+
+/* =====================================================================
+   HISTORY TAB
+   ===================================================================== */
+
+.hist-session {
+  background: var(--surface);
+  border-radius: var(--r-lg);
+  border: 1.5px solid var(--outline-subtle);
+  margin-bottom: 12px;
+  overflow: hidden;
+  box-shadow: var(--shadow-1);
+}
+
+.hist-session-header {
+  padding: 10px 14px;
+  background: var(--surface-variant);
+  border-bottom: 1px solid var(--outline-subtle);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+
+.hist-session-date {
+  font-family: var(--heading);
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.hist-session-by {
+  font-size: .74rem;
+  color: var(--text2);
+}
+.hist-session-count {
+  margin-left: auto;
+  font-family: var(--heading);
+  font-size: .68rem;
+  font-weight: 700;
+  color: var(--text3);
+  background: var(--outline-subtle);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.hist-session-items { padding: 4px 0; }
+
+.hist-item-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--outline-subtle);
+  font-size: .83rem;
+}
+.hist-item-row:last-child { border-bottom: none; }
+.hist-item-row.hist-item-flagged { background: var(--red-bg); }
+
+.hist-item-name { font-family: var(--heading); font-weight: 600; color: var(--text); flex: 1; min-width: 0; }
+.hist-item-detail { font-size: .74rem; color: var(--text3); white-space: nowrap; }
+.hist-item-note { font-size: .72rem; color: var(--text2); font-style: italic; width: 100%; }
+
+/* =====================================================================
    UTILITY
    ===================================================================== */
 

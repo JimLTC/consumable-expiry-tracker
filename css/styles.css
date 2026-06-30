@@ -10,54 +10,54 @@
 }
 
 :root {
-  /* Typography */
-  --heading: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* Typography — Apothecary: Playfair Display serif for headings */
+  --heading: 'Playfair Display', Georgia, 'Times New Roman', serif;
   --body:    'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 
-  /* Material Design palette */
-  --primary:           #1967D2;
-  --primary-dark:      #1557B0;
-  --primary-container: #D2E3FC;
+  /* Apothecary palette — deep botanical green on warm cream */
+  --primary:           #2A5C45;
+  --primary-dark:      #1E4333;
+  --primary-container: #C9E5D7;
   --on-primary:        #FFFFFF;
 
-  /* Surfaces */
-  --bg:              #F1F4F9;
-  --surface:         #FFFFFF;
-  --surface-variant: #E8EEF9;
-  --outline:         #C5CAD6;
-  --outline-subtle:  #E2E7F0;
+  /* Warm cream surfaces */
+  --bg:              #F5EFE4;
+  --surface:         #FDFAF3;
+  --surface-variant: #EDE6D5;
+  --outline:         #C4B89C;
+  --outline-subtle:  #DDD5C2;
 
-  /* Status — Healthy */
-  --green:    #1E8E3E;
-  --green-bg: #E6F4EA;
-  --green-b:  #A8D5B5;
+  /* Status — Healthy (botanical green) */
+  --green:    #2A5C45;
+  --green-bg: #E3EFE9;
+  --green-b:  #9FC7B3;
 
-  /* Status — Warning / Expiring Soon */
-  --amber:    #F9AB00;
-  --amber-bg: #FEF7E0;
-  --amber-b:  #FDD663;
+  /* Status — Warning / Expiring Soon (warm amber) */
+  --amber:    #A56E0A;
+  --amber-bg: #FDF3E3;
+  --amber-b:  #D4A84B;
 
-  /* Status — Critical / Expired */
-  --red:    #D93025;
-  --red-bg: #FCE8E6;
-  --red-b:  #F5A9A5;
+  /* Status — Critical / Expired (terracotta red) */
+  --red:    #9E2B1A;
+  --red-bg: #FAE9E7;
+  --red-b:  #DFA099;
 
-  /* Low stock (orange, distinct from amber) */
-  --orange:    #E37400;
-  --orange-bg: #FEF3E2;
-  --orange-b:  #FBC26B;
+  /* Low stock (warm burnt orange) */
+  --orange:    #C47C1A;
+  --orange-bg: #FDF0DC;
+  --orange-b:  #E4B86B;
 
-  /* Text */
-  --text:      #1C2B4A;
-  --text2:     #3C4C6B;
-  --text3:     #6B7A99;
-  --text-hint: #9AA3B5;
+  /* Text — warm sepia */
+  --text:      #2B1D0E;
+  --text2:     #4A3520;
+  --text3:     #7A6047;
+  --text-hint: #A89070;
 
-  /* Material elevation shadows */
-  --shadow-1: 0 1px 2px rgba(28,43,74,.06), 0 0 0 1px rgba(28,43,74,.04);
-  --shadow-2: 0 2px 8px rgba(28,43,74,.09), 0 1px 2px rgba(28,43,74,.06);
-  --shadow-3: 0 4px 16px rgba(28,43,74,.11), 0 2px 4px rgba(28,43,74,.06);
-  --shadow-lift: 0 6px 24px rgba(28,43,74,.14), 0 2px 6px rgba(28,43,74,.07);
+  /* Warm brown-tinted shadows */
+  --shadow-1: 0 1px 2px rgba(43,29,14,.07), 0 0 0 1px rgba(43,29,14,.04);
+  --shadow-2: 0 2px 8px rgba(43,29,14,.10), 0 1px 2px rgba(43,29,14,.06);
+  --shadow-3: 0 4px 16px rgba(43,29,14,.12), 0 2px 4px rgba(43,29,14,.06);
+  --shadow-lift: 0 6px 24px rgba(43,29,14,.15), 0 2px 6px rgba(43,29,14,.07);
 
   /* Layout */
   --nav-h:    68px;
@@ -90,7 +90,7 @@ header {
   top: 0;
   z-index: 100;
   background: var(--surface);
-  border-bottom: 1px solid var(--outline-subtle);
+  border-bottom: 2px solid var(--primary);
   height: var(--header-h);
   display: flex;
   align-items: center;
@@ -116,10 +116,10 @@ header {
 
 header h1 {
   font-family: var(--heading);
-  font-size: .97rem;
-  font-weight: 600;
-  color: var(--text);
-  letter-spacing: -.01em;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--primary);
+  letter-spacing: .01em;
 }
 
 #connection-status {
@@ -148,11 +148,11 @@ main {
 
 .tab h2 {
   font-family: var(--heading);
-  font-size: 1.15rem;
+  font-size: 1.3rem;
   font-weight: 700;
-  color: var(--text);
+  color: var(--primary);
   margin-bottom: 6px;
-  letter-spacing: -.02em;
+  letter-spacing: .01em;
 }
 
 .helper-text {
@@ -461,11 +461,11 @@ main {
   right: 0;
   height: var(--nav-h);
   background: var(--surface);
-  border-top: 1px solid var(--outline-subtle);
+  border-top: 2px solid var(--primary);
   display: flex;
   align-items: center;
   z-index: 200;
-  box-shadow: 0 -1px 3px rgba(0,0,0,.06), 0 -4px 12px rgba(0,0,0,.04);
+  box-shadow: 0 -1px 3px rgba(43,29,14,.06), 0 -4px 12px rgba(43,29,14,.04);
 }
 
 .nav-btn {

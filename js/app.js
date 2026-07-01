@@ -3,16 +3,40 @@
 // =====================================================================
 
 const state = {
-  scanOutItem:     null,
-  weeklyCheck:     { items: [], decisions: [], joined: [], checkedBy: '' },
-  siCatalogItems:  null,
-  catalogMap:      null,
-  soGroups:        null,
-  dashboardGroups: null,
+  scanOutItem:      null,
+  weeklyCheck:      { items: [], decisions: [], joined: [], checkedBy: '' },
+  siCatalogItems:   null,
+  catalogMap:       null,
+  soGroups:         null,
+  dashboardGroups:  null,
+  dashboardItems:   null,
   dashboardFilters: null,
-  wcFilters:       null,
-  history:         { rows: [], filters: { location: '', search: '' } }
+  wcFilters:        null,
+  history:          { rows: [], filters: { location: '', search: '' } }
 };
+
+// =====================================================================
+// DASHBOARD PREFERENCES (localStorage, per device)
+// =====================================================================
+
+const DASH_PREFS_KEY = 'ct_dash_prefs_v1';
+
+function loadDashPrefs() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(DASH_PREFS_KEY) || '{}');
+    return {
+      sectionOrder:   saved.sectionOrder   || ['banner','kpi','timeline','chart','inventory'],
+      hiddenSections: saved.hiddenSections || [],
+      hiddenKPIs:     saved.hiddenKPIs     || []
+    };
+  } catch (_) {
+    return { sectionOrder: ['banner','kpi','timeline','chart','inventory'], hiddenSections: [], hiddenKPIs: [] };
+  }
+}
+
+function saveDashPrefs(prefs) {
+  localStorage.setItem(DASH_PREFS_KEY, JSON.stringify(prefs));
+}
 
 // =====================================================================
 // INIT
@@ -500,6 +524,11 @@ async function submitScanOut(qty) {
 
 function setupDashboard() {
   document.getElementById('btn-refresh-dashboard').addEventListener('click', loadDashboard);
+  document.getElementById('btn-dash-customize').addEventListener('click', openDashCustomize);
+  document.getElementById('btn-dash-customize-close').addEventListener('click', () => hide('dash-customize-modal'));
+  document.getElementById('dash-customize-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('dash-customize-modal')) hide('dash-customize-modal');
+  });
 }
 
 async function loadDashboard() {
@@ -519,7 +548,6 @@ async function loadDashboard() {
   if (items.length === 0) { content.innerHTML = '<p class="no-items">No items in inventory yet.</p>'; return; }
 
   state.dashboardFilters = { location: '', statuses: new Set() };
-  const todayStr = today();
 
   items.sort((a, b) => {
     if (!a.expiry && !b.expiry) return 0;
@@ -540,6 +568,18 @@ async function loadDashboard() {
     if (!g.name && item.name) g.name = item.name;
   });
   state.dashboardGroups = Array.from(groupMap.values());
+  state.dashboardItems  = items;
+
+  renderDashboard();
+}
+
+function renderDashboard() {
+  const content = document.getElementById('dashboard-content');
+  if (!state.dashboardGroups || !state.dashboardItems) return;
+
+  const prefs    = loadDashPrefs();
+  const todayStr = today();
+  const items    = state.dashboardItems;
 
   let expiredCount = 0, soonCount = 0, lowCount = 0;
   state.dashboardGroups.forEach(g => {
@@ -554,20 +594,23 @@ async function loadDashboard() {
 
   const attentionCount = expiredCount + soonCount + lowCount;
   const attentionParts = [
-    expiredCount > 0  ? expiredCount + ' expired'      : '',
-    soonCount > 0     ? soonCount    + ' expiring soon' : '',
-    lowCount > 0      ? lowCount     + ' below norm'    : ''
+    expiredCount > 0 ? expiredCount + ' expired'       : '',
+    soonCount > 0    ? soonCount    + ' expiring soon'  : '',
+    lowCount > 0     ? lowCount     + ' below norm'     : ''
   ].filter(Boolean);
   const bannerHtml = attentionCount > 0
     ? `<div class="banner-attention">&#9888; ${attentionCount} item${attentionCount === 1 ? '' : 's'} need${attentionCount === 1 ? 's' : ''} attention: ${attentionParts.join(', ')}</div>`
     : '';
 
-  const kpiHtml = `<div class="kpi-grid">
-    <div class="kpi-card kpi-total"><div class="kpi-lbl">Active Items</div><div class="kpi-num">${state.dashboardGroups.length}</div></div>
-    <div class="kpi-card kpi-expiring"><div class="kpi-lbl">Expiring Soon</div><div class="kpi-num">${soonCount}</div></div>
-    <div class="kpi-card kpi-expired"><div class="kpi-lbl">Expired</div><div class="kpi-num">${expiredCount}</div></div>
-    <div class="kpi-card kpi-low"><div class="kpi-lbl">Below Norm</div><div class="kpi-num">${lowCount}</div></div>
-  </div>`;
+  const kpiDefs = [
+    { id: 'total',    cls: 'kpi-total',    lbl: 'Active Items',  num: state.dashboardGroups.length },
+    { id: 'expiring', cls: 'kpi-expiring', lbl: 'Expiring Soon', num: soonCount },
+    { id: 'expired',  cls: 'kpi-expired',  lbl: 'Expired',       num: expiredCount },
+    { id: 'low',      cls: 'kpi-low',      lbl: 'Below Norm',    num: lowCount }
+  ].filter(k => !prefs.hiddenKPIs.includes(k.id));
+  const kpiHtml = kpiDefs.length > 0
+    ? `<div class="kpi-grid">${kpiDefs.map(k => `<div class="kpi-card ${k.cls}"><div class="kpi-lbl">${k.lbl}</div><div class="kpi-num">${k.num}</div></div>`).join('')}</div>`
+    : '';
 
   const withExpiry = items.filter(i => i.expiry).slice(0, 8);
   let timelineHtml = '';
@@ -690,27 +733,40 @@ async function loadDashboard() {
     </div>
   </div>`;
 
-  content.innerHTML = bannerHtml + kpiHtml + timelineHtml + chartHtml + inventoryHtml;
+  const allSections = { banner: bannerHtml, kpi: kpiHtml, timeline: timelineHtml, chart: chartHtml, inventory: inventoryHtml };
+  content.innerHTML = prefs.sectionOrder
+    .filter(id => !prefs.hiddenSections.includes(id))
+    .map(id => allSections[id] || '')
+    .join('');
 
-  document.getElementById('dash-filter-loc').addEventListener('change', e => {
-    state.dashboardFilters.location = e.target.value;
-    applyDashboardFilters();
-  });
-  content.querySelectorAll('#dash-filter-bar .filter-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const key = chip.dataset.status;
-      const set = state.dashboardFilters.statuses;
-      if (set.has(key)) set.delete(key); else set.add(key);
-      chip.classList.toggle('selected', set.has(key));
+  const filterLocEl = document.getElementById('dash-filter-loc');
+  if (filterLocEl) {
+    filterLocEl.value = (state.dashboardFilters && state.dashboardFilters.location) || '';
+    filterLocEl.addEventListener('change', e => {
+      state.dashboardFilters.location = e.target.value;
       applyDashboardFilters();
     });
-  });
-  document.getElementById('dash-filter-clear').addEventListener('click', () => {
-    state.dashboardFilters = { location: '', statuses: new Set() };
-    document.getElementById('dash-filter-loc').value = '';
-    content.querySelectorAll('#dash-filter-bar .filter-chip').forEach(c => c.classList.remove('selected'));
+    content.querySelectorAll('#dash-filter-bar .filter-chip').forEach(chip => {
+      if (state.dashboardFilters && state.dashboardFilters.statuses.has(chip.dataset.status)) chip.classList.add('selected');
+      chip.addEventListener('click', () => {
+        const key = chip.dataset.status;
+        const set = state.dashboardFilters.statuses;
+        if (set.has(key)) set.delete(key); else set.add(key);
+        chip.classList.toggle('selected', set.has(key));
+        applyDashboardFilters();
+      });
+    });
+    const clearBtn = document.getElementById('dash-filter-clear');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        state.dashboardFilters = { location: '', statuses: new Set() };
+        document.getElementById('dash-filter-loc').value = '';
+        content.querySelectorAll('#dash-filter-bar .filter-chip').forEach(c => c.classList.remove('selected'));
+        applyDashboardFilters();
+      });
+    }
     applyDashboardFilters();
-  });
+  }
   content.querySelectorAll('.inv-lot-expand-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const gIdx   = parseInt(btn.dataset.gidx, 10);
@@ -731,13 +787,117 @@ async function loadDashboard() {
   });
 }
 
+// =====================================================================
+// DASHBOARD CUSTOMIZE MODAL
+// =====================================================================
+
+function openDashCustomize() {
+  renderDashCustomizePanel();
+  show('dash-customize-modal');
+}
+
+function renderDashCustomizePanel() {
+  const prefs = loadDashPrefs();
+  const sectionLabels = { banner: 'Attention Banner', kpi: 'KPI Cards', timeline: 'Expiry Timeline', chart: 'Stock Levels Chart', inventory: 'Inventory List' };
+  const kpiLabels     = { total: 'Active Items', expiring: 'Expiring Soon', expired: 'Expired', low: 'Below Norm' };
+
+  const sectionRows = prefs.sectionOrder.map((id, i) => {
+    const hidden = prefs.hiddenSections.includes(id);
+    return `<div class="dash-prefs-row">
+      <input type="checkbox" class="dash-prefs-toggle" id="dash-sec-${id}" ${hidden ? '' : 'checked'} data-section="${id}">
+      <label class="dash-prefs-label" for="dash-sec-${id}">${esc(sectionLabels[id] || id)}</label>
+      <button type="button" class="dash-arrow-btn" data-sec-up="${id}" ${i === 0 ? 'disabled' : ''}>&#9650;</button>
+      <button type="button" class="dash-arrow-btn" data-sec-down="${id}" ${i === prefs.sectionOrder.length - 1 ? 'disabled' : ''}>&#9660;</button>
+    </div>`;
+  }).join('');
+
+  const kpiRows = Object.entries(kpiLabels).map(([id, label]) => {
+    const hidden = prefs.hiddenKPIs.includes(id);
+    return `<div class="dash-prefs-row">
+      <input type="checkbox" class="dash-prefs-toggle" id="dash-kpi-${id}" ${hidden ? '' : 'checked'} data-kpi="${id}">
+      <label class="dash-prefs-label" for="dash-kpi-${id}">${esc(label)}</label>
+    </div>`;
+  }).join('');
+
+  document.getElementById('dash-customize-body').innerHTML = `
+    <p class="dash-prefs-note">&#128241; Settings saved to this device only.</p>
+    <div class="dash-prefs-group-label">Sections</div>
+    ${sectionRows}
+    <div class="dash-prefs-group-label" style="margin-top:16px">KPI Cards</div>
+    ${kpiRows}
+    <button type="button" class="dash-prefs-reset" id="btn-dash-prefs-reset">Reset to Default</button>
+  `;
+  wireDashCustomize();
+}
+
+function wireDashCustomize() {
+  const body = document.getElementById('dash-customize-body');
+
+  body.querySelectorAll('.dash-prefs-toggle[data-section]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const prefs = loadDashPrefs();
+      const id    = cb.dataset.section;
+      if (cb.checked) prefs.hiddenSections = prefs.hiddenSections.filter(s => s !== id);
+      else if (!prefs.hiddenSections.includes(id)) prefs.hiddenSections.push(id);
+      saveDashPrefs(prefs);
+      renderDashboard();
+    });
+  });
+
+  body.querySelectorAll('.dash-prefs-toggle[data-kpi]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const prefs = loadDashPrefs();
+      const id    = cb.dataset.kpi;
+      if (cb.checked) prefs.hiddenKPIs = prefs.hiddenKPIs.filter(k => k !== id);
+      else if (!prefs.hiddenKPIs.includes(id)) prefs.hiddenKPIs.push(id);
+      saveDashPrefs(prefs);
+      renderDashboard();
+    });
+  });
+
+  body.querySelectorAll('[data-sec-up]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const prefs = loadDashPrefs();
+      const id    = btn.dataset.secUp;
+      const idx   = prefs.sectionOrder.indexOf(id);
+      if (idx > 0) {
+        [prefs.sectionOrder[idx - 1], prefs.sectionOrder[idx]] = [prefs.sectionOrder[idx], prefs.sectionOrder[idx - 1]];
+        saveDashPrefs(prefs);
+        renderDashCustomizePanel();
+        renderDashboard();
+      }
+    });
+  });
+
+  body.querySelectorAll('[data-sec-down]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const prefs = loadDashPrefs();
+      const id    = btn.dataset.secDown;
+      const idx   = prefs.sectionOrder.indexOf(id);
+      if (idx < prefs.sectionOrder.length - 1) {
+        [prefs.sectionOrder[idx], prefs.sectionOrder[idx + 1]] = [prefs.sectionOrder[idx + 1], prefs.sectionOrder[idx]];
+        saveDashPrefs(prefs);
+        renderDashCustomizePanel();
+        renderDashboard();
+      }
+    });
+  });
+
+  document.getElementById('btn-dash-prefs-reset').addEventListener('click', () => {
+    saveDashPrefs({ sectionOrder: ['banner','kpi','timeline','chart','inventory'], hiddenSections: [], hiddenKPIs: [] });
+    renderDashCustomizePanel();
+    renderDashboard();
+  });
+}
+
 function applyDashboardFilters() {
   const groups  = state.dashboardGroups || [];
   const filters = state.dashboardFilters;
   const todayStr = today();
 
   const active = Boolean(filters.location) || filters.statuses.size > 0;
-  document.getElementById('dash-filter-clear').classList.toggle('hidden', !active);
+  const clearBtn = document.getElementById('dash-filter-clear');
+  if (clearBtn) clearBtn.classList.toggle('hidden', !active);
 
   let visibleCount = 0;
   groups.forEach((g, gIdx) => {
@@ -763,7 +923,8 @@ function applyDashboardFilters() {
     card.classList.toggle('hidden', !pass);
     if (pass) visibleCount++;
   });
-  document.getElementById('dash-no-matches').classList.toggle('hidden', visibleCount > 0);
+  const noMatchEl = document.getElementById('dash-no-matches');
+  if (noMatchEl) noMatchEl.classList.toggle('hidden', visibleCount > 0);
 }
 
 function uniqueLocations(items) {

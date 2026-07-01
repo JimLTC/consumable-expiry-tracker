@@ -1455,6 +1455,105 @@ main {
 .hist-item-note { font-size: .72rem; color: var(--text2); font-style: italic; width: 100%; }
 
 /* =====================================================================
+   DASHBOARD — CUSTOMISE MODAL
+   ===================================================================== */
+
+.dash-prefs-note {
+  font-size: .78rem;
+  color: var(--text3);
+  margin-bottom: 16px;
+  font-style: italic;
+}
+
+.dash-prefs-group-label {
+  font-family: var(--heading);
+  font-size: .68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--text2);
+  padding: 10px 0 6px;
+  border-bottom: 1px solid var(--outline-subtle);
+  margin-bottom: 4px;
+}
+
+.dash-prefs-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--outline-subtle);
+}
+.dash-prefs-row:last-of-type { border-bottom: none; }
+
+.dash-prefs-toggle {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 42px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--outline);
+  border: none;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: background .2s;
+}
+.dash-prefs-toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left .2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,.25);
+}
+.dash-prefs-toggle:checked { background: var(--primary); }
+.dash-prefs-toggle:checked::after { left: 21px; }
+
+.dash-prefs-label {
+  font-family: var(--heading);
+  font-size: .88rem;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+}
+
+.dash-arrow-btn {
+  background: var(--surface-variant);
+  border: 1.5px solid var(--outline);
+  border-radius: var(--r-sm);
+  color: var(--text2);
+  font-size: .8rem;
+  cursor: pointer;
+  padding: 4px 10px;
+  min-height: 32px;
+  transition: background .1s, border-color .1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.dash-arrow-btn:hover { background: var(--primary-container); border-color: var(--primary); color: var(--primary); }
+.dash-arrow-btn:disabled { opacity: .3; cursor: default; pointer-events: none; }
+
+.dash-prefs-reset {
+  display: block;
+  width: 100%;
+  margin-top: 20px;
+  padding: 10px;
+  background: var(--surface-variant);
+  border: 1.5px solid var(--outline);
+  border-radius: var(--r-lg);
+  color: var(--text3);
+  font-size: .84rem;
+  font-weight: 600;
+  font-family: var(--heading);
+  cursor: pointer;
+  text-align: center;
+  transition: background .1s, color .1s, border-color .1s;
+}
+.dash-prefs-reset:hover { background: var(--red-bg); border-color: var(--red-b); color: var(--red); }
+
+/* =====================================================================
    UTILITY
    ===================================================================== */
 

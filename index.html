@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Consumables Tracker</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=20260630b">
+  <link rel="stylesheet" href="css/styles.css?v=20260630c">
 </head>
 <body>
 
@@ -182,10 +182,16 @@
          ================================================================ -->
     <section id="tab-dashboard" class="tab">
       <h2>Dashboard</h2>
-      <button id="btn-refresh-dashboard" class="btn-secondary btn-refresh">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-        Refresh
-      </button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button id="btn-refresh-dashboard" class="btn-secondary btn-refresh">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          Refresh
+        </button>
+        <button id="btn-dash-customize" class="btn-secondary btn-refresh" aria-label="Customise dashboard">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Customise
+        </button>
+      </div>
       <div id="dashboard-summary" class="summary-row hidden"></div>
       <div id="dashboard-content"></div>
     </section>
@@ -348,10 +354,23 @@
     </div>
   </div>
 
+  <!-- ================================================================
+       DASHBOARD CUSTOMISE MODAL
+       ================================================================ -->
+  <div id="dash-customize-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="dash-customize-title">
+    <div class="modal-card">
+      <div class="modal-header">
+        <span id="dash-customize-title" class="modal-title">Customise Dashboard</span>
+        <button type="button" id="btn-dash-customize-close" class="modal-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body" id="dash-customize-body"></div>
+    </div>
+  </div>
+
   <!-- Scripts — load config first so API_URL is defined before api.js runs -->
-  <script src="js/config.js?v=20260630b"></script>
-  <script src="js/api.js?v=20260630b"></script>
-  <script src="js/app.js?v=20260630b"></script>
+  <script src="js/config.js?v=20260630c"></script>
+  <script src="js/api.js?v=20260630c"></script>
+  <script src="js/app.js?v=20260630c"></script>
 
 </body>
 </html>

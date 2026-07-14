@@ -130,6 +130,8 @@ function doPost(e) {
       result = logCheckHistory(params);
     } else if (action === 'setBackOrder') {
       result = setBackOrder(params);
+    } else if (action === 'setRetired') {
+      result = setRetired(params);
     } else {
       result = { success: false, error: 'Unknown action: ' + action };
     }
@@ -443,6 +445,35 @@ function setBackOrder(params) {
   }
 }
 
+/**
+ * Set or clear the Retired flag for an Item Catalog entry.
+ * Called automatically when a "Do Not Order" item reaches zero stock.
+ */
+function setRetired(params) {
+  const ref     = String(params.ref || '').trim();
+  const retired = (params.retired === true || params.retired === 'true' ||
+                   String(params.retired || '').toLowerCase() === 'yes') ? 'Yes' : '';
+
+  if (!ref) return { success: false, error: 'REF is required' };
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return { success: false, error: 'Server busy' };
+
+  try {
+    const sheet  = getSheet(CATALOG_SHEET);
+    const values = sheet.getDataRange().getValues();
+    for (let i = 1; i < values.length; i++) {
+      if (String(values[i][CC.REF]).trim() === ref) {
+        sheet.getRange(i + 1, CC.RETIRED + 1).setValue(retired);
+        return { success: true };
+      }
+    }
+    return { success: false, error: 'Item not found in catalog' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /** Add a new item to the Item Catalog. Returns error if REF already exists. */
 function addCatalogItem(params) {
   const ref               = String(params.ref               || '').trim();
@@ -455,7 +486,7 @@ function addCatalogItem(params) {
   const expiryWarningDays = Number(params.expiryWarningDays)|| 14;
   const company           = String(params.company           || '').trim();
   const orderType         = String(params.orderType         || '').trim();
-  const retired           = (orderType === 'Do Not Order' || params.retired) ? 'Yes' : '';
+  const retired           = '';  // items never start retired; setRetired sets it explicitly
 
   if (!ref)  return { success: false, error: 'REF is required' };
   if (!name) return { success: false, error: 'Item Name is required' };
@@ -492,7 +523,6 @@ function updateCatalogItem(params) {
   const expiryWarningDays = Number(params.expiryWarningDays)|| 14;
   const company           = String(params.company           || '').trim();
   const orderType         = String(params.orderType         || '').trim();
-  const retired           = (orderType === 'Do Not Order' || params.retired) ? 'Yes' : '';
 
   if (!ref) return { success: false, error: 'REF is required' };
 
@@ -502,11 +532,13 @@ function updateCatalogItem(params) {
   try {
     const sheet  = getSheet(CATALOG_SHEET);
     const values = sheet.getDataRange().getValues();
-    let rowNum   = -1;
+    let rowIdx = -1, rowNum = -1;
     for (let i = 1; i < values.length; i++) {
-      if (String(values[i][CC.REF]).trim() === ref) { rowNum = i + 1; break; }
+      if (String(values[i][CC.REF]).trim() === ref) { rowIdx = i; rowNum = i + 1; break; }
     }
     if (rowNum === -1) return { success: false, error: 'Item not found in catalog' };
+
+    const existingRetired = String(values[rowIdx][CC.RETIRED] || '').trim();
 
     sheet.getRange(rowNum, CC.NAME           + 1).setValue(name);
     sheet.getRange(rowNum, CC.CATEGORY       + 1).setValue(category);
@@ -517,7 +549,7 @@ function updateCatalogItem(params) {
     sheet.getRange(rowNum, CC.EXPIRY_WARNING + 1).setValue(expiryWarningDays);
     sheet.getRange(rowNum, CC.COMPANY        + 1).setValue(company);
     sheet.getRange(rowNum, CC.ORDER_TYPE     + 1).setValue(orderType);
-    sheet.getRange(rowNum, CC.RETIRED        + 1).setValue(retired);
+    sheet.getRange(rowNum, CC.RETIRED        + 1).setValue(existingRetired);
     return { success: true };
   } finally {
     lock.releaseLock();

@@ -503,6 +503,14 @@ async function submitScanOut(qty) {
   const note = result.archived ? ' (archived — expired + empty)' : '';
   showToast(`Used ${qty}. Remaining: ${result.newQty}${note}`, 'success');
 
+  if (result.newQty === 0 || result.archived) {
+    const cat = state.catalogMap && state.catalogMap.get(item.gtin);
+    if (cat && cat.orderType === 'Do Not Order' && !cat.retired) {
+      await api.post('setRetired', { ref: item.gtin, retired: true });
+      cat.retired = true;
+    }
+  }
+
   if (result.archived || result.newQty <= 0) {
     resetButton(btn, 'Confirm Use');
     hide('scan-out-result');
@@ -966,6 +974,7 @@ function openEditModal(ref) {
   document.getElementById('edit-expiry-warning').value = cat ? (cat.expiryWarningDays || 14) : 14;
   document.getElementById('edit-company').value      = cat ? (cat.company || '') : '';
   document.getElementById('edit-order-type').value   = cat ? (cat.orderType || 'Order Form') : 'Order Form';
+  document.getElementById('edit-back-order').checked = cat ? (cat.backOrder === true) : false;
   show('edit-modal');
 }
 
@@ -974,9 +983,10 @@ function closeEditModal() {
 }
 
 async function submitEditCatalogItem() {
-  const btn  = document.getElementById('btn-edit-save');
-  const ref  = v('edit-ref');
-  const name = v('edit-name');
+  const btn       = document.getElementById('btn-edit-save');
+  const ref       = v('edit-ref');
+  const name      = v('edit-name');
+  const backOrder = document.getElementById('edit-back-order').checked;
   if (!name) { showToast('Item Name is required', 'error'); return; }
 
   setLoading(btn, 'Saving…');
@@ -992,9 +1002,11 @@ async function submitEditCatalogItem() {
     company:           v('edit-company'),
     orderType:         document.getElementById('edit-order-type').value || 'Order Form'
   });
-  resetButton(btn, 'Save Changes');
 
-  if (!result.success) { showToast('Error: ' + result.error, 'error'); return; }
+  if (!result.success) { resetButton(btn, 'Save Changes'); showToast('Error: ' + result.error, 'error'); return; }
+
+  await api.post('setBackOrder', { ref, value: backOrder });
+  resetButton(btn, 'Save Changes');
 
   showToast('Catalog item updated', 'success');
   closeEditModal();
@@ -1034,7 +1046,8 @@ async function loadWeeklyCheck() {
 
   setCatalog(catalogResult.items || []);
 
-  const catalogItems = catalogResult.items || [];
+  const allCatalogItems = catalogResult.items || [];
+  const catalogItems    = allCatalogItems.filter(ci => !ci.retired && !ci.backOrder);
   if (catalogItems.length === 0) { container.innerHTML = '<p class="no-items">Item Catalog is empty — add items to the Catalog sheet first.</p>'; return; }
 
   const inventoryItems = inventoryResult.items || [];
@@ -1061,7 +1074,7 @@ async function loadWeeklyCheck() {
 
   state.weeklyCheck = {
     joined, items: flatLots,
-    decisions: flatLots.map(() => ({ integrityStatus: null, flagNote: '', qtyMode: null, physicalQty: null, reason: '', done: false })),
+    decisions: joined.map(() => ({ status: null, notes: '', done: false })),
     checkedBy: ''
   };
   showWCNamePrompt(renderWCChecklist);
@@ -1091,10 +1104,9 @@ function showWCNamePrompt(onSubmit) {
 }
 
 function renderWCChecklist() {
-  const { joined, items } = state.weeklyCheck;
-  const container = document.getElementById('wc-container');
+  const { joined } = state.weeklyCheck;
+  const container  = document.getElementById('wc-container');
 
-  // Group by catalog item location (column G)
   const locationGroups = new Map();
   joined.forEach((ji, jiIdx) => {
     const loc = (ji.catalogItem.location || '').trim() || '__unassigned__';
@@ -1110,7 +1122,7 @@ function renderWCChecklist() {
 
   const chevron = `<svg class="wc-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>`;
 
-  let html = '';
+  let html = `<div class="wc-progress-wrap"><p class="wc-progress" id="wc-progress">0 / ${joined.length} items checked</p></div>`;
   for (const locKey of sortedLocKeys) {
     const locItems = locationGroups.get(locKey);
     if (!locItems) continue;
@@ -1118,44 +1130,7 @@ function renderWCChecklist() {
     const itemCount = locItems.length;
     let locHtml = '';
     for (const { ji, jiIdx } of locItems) {
-      const { catalogItem, lots, totalPieces } = ji;
-      const wDays        = catalogItem.expiryWarningDays || 14;
-      const normPieces   = catalogItem.norm * catalogItem.piecesPerUnit;
-      const normBadgeCls = normPieces <= 0 ? '' : totalPieces >= normPieces ? 'norm-ok' : totalPieces === 0 ? 'norm-critical' : 'norm-low';
-      const normLabel    = normPieces > 0 ? (totalPieces >= normPieces ? 'OK' : totalPieces === 0 ? 'Critical' : 'Low') : '';
-      const piecesDisplay = fmtPieces(totalPieces, catalogItem.orderingUnit, catalogItem.piecesPerUnit);
-      const normDisplay   = catalogItem.norm > 0 ? `Norm: ${catalogItem.norm} ${catalogItem.orderingUnit}` : '';
-      const todayNow      = today();
-      const anyExpired    = lots.some(l => l.expiry && l.expiry < todayNow);
-      const anyExpiring   = !anyExpired && lots.some(l => l.expiry && daysDiff(todayNow, l.expiry) <= wDays);
-      const expiryBadge   = anyExpired ? '<span class="badge badge-expired">Expired</span>'
-                          : anyExpiring ? '<span class="badge badge-expiring">Soon</span>' : '';
-      const orderTypeLabel = catalogItem.orderType
-        ? `<span class="wc-order-type-label">${esc(catalogItem.orderType)}</span>` : '';
-      const backOrderActive = catalogItem.backOrder === true;
-      const lotsHtml = lots.length === 0
-        ? '<div class="wc-no-stock">Not in stock &mdash; check if order is needed</div>'
-        : lots.map(lot => renderWCItemCard(lot, lot._flatIdx, wDays)).join('');
-
-      locHtml += `<div class="wc-catalog-item-group" data-ref="${esc(catalogItem.ref)}" data-jiidx="${jiIdx}">
-        <div class="wc-catalog-item-header">
-          <div class="wc-catalog-item-title">
-            <span class="wc-catalog-item-name">${esc(catalogItem.name || catalogItem.ref)}</span>
-            ${expiryBadge}
-            ${normBadgeCls ? `<span class="norm-badge ${normBadgeCls}">${esc(normLabel)}</span>` : ''}
-            ${orderTypeLabel}
-          </div>
-          <div class="wc-catalog-item-details">
-            <span class="wc-catalog-item-ref">REF: ${esc(catalogItem.ref)}</span>
-            <span class="wc-catalog-item-qty">${piecesDisplay}</span>
-            ${normDisplay ? `<span class="wc-catalog-norm">${esc(normDisplay)}</span>` : ''}
-          </div>
-        </div>
-        <div class="wc-backorder-row">
-          <button type="button" class="wc-btn-backorder ${backOrderActive ? 'active' : ''}" data-jiidx="${jiIdx}" data-ref="${esc(catalogItem.ref)}">&#8987; ${backOrderActive ? 'On Back Order' : 'Mark Back Order'}</button>
-        </div>
-        ${lotsHtml}
-      </div>`;
+      locHtml += renderWCItemGroupCard(ji, jiIdx);
     }
     html += `<div class="wc-location-group" data-loc-key="${esc(locKey)}">
       <div class="wc-location-header">
@@ -1168,290 +1143,208 @@ function renderWCChecklist() {
   }
   html += `<div id="wc-finish-area" class="hidden"><button id="btn-wc-finish" class="btn-primary">Finish Check</button></div>`;
   container.innerHTML = html;
-  items.forEach((_, i) => { try { wireWCCard(i); } catch (e) { console.error('wireWCCard(' + i + '):', e); } });
-  wireWCGroupHeaders();
-  document.getElementById('btn-wc-finish').addEventListener('click', submitWeeklyCheck);
 
+  joined.forEach((_, jiIdx) => wireWCGroupCard(jiIdx));
   container.querySelectorAll('.wc-location-header').forEach(header => {
-    header.addEventListener('click', () => {
-      header.closest('.wc-location-group').classList.toggle('open');
-    });
+    header.addEventListener('click', () => header.closest('.wc-location-group').classList.toggle('open'));
   });
+  document.getElementById('btn-wc-finish').addEventListener('click', submitWeeklyCheck);
 }
 
-function renderWCItemCard(item, i, wDays) {
-  const todayStr  = today();
-  const expired   = item.expiry && item.expiry < todayStr;
-  const expiring  = !expired && item.expiry && daysDiff(todayStr, item.expiry) <= (wDays || 14);
-  const badgeCls  = expired ? 'badge-expired' : expiring ? 'badge-expiring' : '';
-  const expiryStr = formatExpiry(item.expiry);
-  const borderCls = expired ? 'wc-item-card-expired' : expiring ? 'wc-item-card-expiring' : '';
+function renderWCItemGroupCard(ji, jiIdx) {
+  const { catalogItem, lots, totalPieces } = ji;
+  const todayNow   = today();
+  const wDays      = catalogItem.expiryWarningDays || 14;
+  const normPieces = (catalogItem.norm || 0) * (catalogItem.piecesPerUnit || 1);
 
-  return `<div class="wc-item-card ${borderCls}" id="wc-card-${i}">
-    <div class="wc-item-meta">
-      ${item.lot ? 'LOT: <strong>' + esc(item.lot) + '</strong>' : '<em>No lot number</em>'}
-      ${expiryStr ? ' &nbsp;&middot;&nbsp; ' + esc(expiryStr) : ''}
-      &nbsp;&middot;&nbsp; Qty: <strong>${item.qty} pcs</strong>
-      ${badgeCls ? `&nbsp;<span class="badge ${badgeCls}">${expired ? 'Expired' : 'Soon'}</span>` : ''}
-    </div>
-    <div class="wc-infonet-reminder hidden" id="wc-infonet-${i}">
-      &#128274; Check CGH Ortho Info Net for recall or alert status before proceeding.
-    </div>
-    <div class="wc-integrity-row">
-      <span class="wc-row-label">Integrity</span>
-      <button type="button" class="wc-btn-integrity" data-index="${i}" data-choice="ok">&#10003; OK</button>
-      <button type="button" class="wc-btn-integrity" data-index="${i}" data-choice="flagged">&#9873; Flag</button>
-    </div>
-    <div class="wc-flag-note hidden" id="wc-flag-note-${i}">
-      <input type="text" id="wc-flag-input-${i}" placeholder="Brief note (e.g. packaging torn)">
-    </div>
-    <div class="wc-qty-row">
-      <span class="wc-row-label">Quantity</span>
-      <button type="button" class="wc-btn-qty" data-index="${i}" data-choice="matches">&#10003; Matches</button>
-      <button type="button" class="wc-btn-qty" data-index="${i}" data-choice="adjusted">Different</button>
-    </div>
-    <div class="wc-adjusted-qty hidden" id="wc-adj-qty-${i}">
-      <label>Physical count (pieces):</label>
-      <div class="wc-qty-input-row">
-        <input type="number" id="wc-qty-input-${i}" value="${item.qty}" min="0" inputmode="numeric">
+  const anyExpired  = lots.some(l => l.expiry && l.expiry < todayNow);
+  const anyExpiring = !anyExpired && lots.some(l => l.expiry && daysDiff(todayNow, l.expiry) <= wDays);
+  const expiryBadge = anyExpired ? '<span class="badge badge-expired">Expired</span>'
+                    : anyExpiring ? '<span class="badge badge-expiring">Soon</span>' : '';
+
+  const normBadgeCls = normPieces <= 0 ? '' : totalPieces >= normPieces ? 'norm-ok' : totalPieces === 0 ? 'norm-critical' : 'norm-low';
+  const normLabel    = normPieces > 0 ? (totalPieces >= normPieces ? 'OK' : totalPieces === 0 ? 'Critical' : 'Low') : '';
+  const piecesDisplay = fmtPieces(totalPieces, catalogItem.orderingUnit, catalogItem.piecesPerUnit);
+  const normDisplay   = catalogItem.norm > 0 ? `Norm: ${catalogItem.norm} ${catalogItem.orderingUnit}` : '';
+
+  const lotsSection = lots.length === 0
+    ? '<div class="wc-no-stock">No inventory record &mdash; check physical shelf</div>'
+    : `<div class="wc-lot-summary">${lots.map(l => {
+        const le = l.expiry && l.expiry < todayNow;
+        const lx = !le && l.expiry && daysDiff(todayNow, l.expiry) <= wDays;
+        const cls = le ? 'lot-expired' : lx ? 'lot-expiring' : '';
+        const chip = [l.lot ? esc(l.lot) : 'No lot', l.expiry ? esc(formatExpiry(l.expiry)) : ''].filter(Boolean).join(' · ');
+        return `<span class="wc-lot-chip ${cls}">${chip}</span>`;
+      }).join('')}
+      <span style="font-size:.72rem;color:var(--text3);align-self:center;margin-left:2px">Qty: ${piecesDisplay}</span>
+    </div>`;
+
+  return `<div class="wc-catalog-item-group" data-ref="${esc(catalogItem.ref)}" data-jiidx="${jiIdx}" id="wc-item-${jiIdx}">
+    <div class="wc-catalog-item-header">
+      <div class="wc-catalog-item-title">
+        <span class="wc-catalog-item-name">${esc(catalogItem.name || catalogItem.ref)}</span>
+        ${expiryBadge}
+        ${normBadgeCls ? `<span class="norm-badge ${normBadgeCls}">${esc(normLabel)}</span>` : ''}
+      </div>
+      <div class="wc-catalog-item-details">
+        <span class="wc-catalog-item-ref">REF: ${esc(catalogItem.ref)}</span>
+        ${normDisplay ? `<span class="wc-catalog-norm">${esc(normDisplay)}</span>` : ''}
       </div>
     </div>
-    <div class="wc-reason-field hidden" id="wc-reason-${i}">
-      <label>Reason (required)</label>
-      <input type="text" id="wc-reason-input-${i}" placeholder="e.g. damaged packaging, found extra, used without scanning">
+    ${lotsSection}
+    <div class="wc-status-row">
+      <button type="button" class="wc-btn-status" data-jiidx="${jiIdx}" data-choice="ok">&#10003; OK</button>
+      <button type="button" class="wc-btn-status" data-jiidx="${jiIdx}" data-choice="low">&#8595; Low</button>
+      <button type="button" class="wc-btn-status" data-jiidx="${jiIdx}" data-choice="out">&#10007; Out</button>
+    </div>
+    <div class="wc-notes-field hidden" id="wc-notes-${jiIdx}">
+      <input type="text" id="wc-notes-input-${jiIdx}" placeholder="Optional note" autocomplete="off">
     </div>
   </div>`;
 }
 
-function wireWCCard(i) {
-  const item = state.weeklyCheck.items[i];
-
-  document.querySelectorAll(`.wc-btn-integrity[data-index="${i}"]`).forEach(btn => {
+function wireWCGroupCard(jiIdx) {
+  document.querySelectorAll(`.wc-btn-status[data-jiidx="${jiIdx}"]`).forEach(btn => {
     btn.addEventListener('click', () => {
       const choice = btn.dataset.choice;
-      state.weeklyCheck.decisions[i].integrityStatus = choice;
-      document.querySelectorAll(`.wc-btn-integrity[data-index="${i}"]`).forEach(b => b.classList.remove('selected-ok', 'selected-flag'));
-      btn.classList.add(choice === 'ok' ? 'selected-ok' : 'selected-flag');
-      const flagNoteEl = document.getElementById('wc-flag-note-' + i);
-      const infoNetEl = document.getElementById('wc-infonet-' + i);
-      if (choice === 'flagged') {
-        flagNoteEl.classList.remove('hidden');
-        document.getElementById('wc-flag-input-' + i).focus();
-        if (infoNetEl) infoNetEl.classList.remove('hidden');
-      } else {
-        flagNoteEl.classList.add('hidden');
-        state.weeklyCheck.decisions[i].flagNote = '';
-        if (infoNetEl) infoNetEl.classList.add('hidden');
-      }
-      updateWCItemDone(i);
+      state.weeklyCheck.decisions[jiIdx].status = choice;
+      document.querySelectorAll(`.wc-btn-status[data-jiidx="${jiIdx}"]`).forEach(b =>
+        b.classList.remove('selected-ok', 'selected-low', 'selected-out')
+      );
+      btn.classList.add('selected-' + choice);
+      const notesEl = document.getElementById('wc-notes-' + jiIdx);
+      if (choice === 'low' || choice === 'out') notesEl.classList.remove('hidden');
+      else notesEl.classList.add('hidden');
+      updateWCGroupDone(jiIdx);
     });
   });
 
-  document.getElementById('wc-flag-input-' + i).addEventListener('input', e => {
-    state.weeklyCheck.decisions[i].flagNote = e.target.value.trim();
-    updateWCItemDone(i);
-  });
-
-  document.querySelectorAll(`.wc-btn-qty[data-index="${i}"]`).forEach(btn => {
-    btn.addEventListener('click', () => {
-      const choice = btn.dataset.choice;
-      state.weeklyCheck.decisions[i].qtyMode = choice;
-      if (choice === 'matches') state.weeklyCheck.decisions[i].physicalQty = item.qty;
-      document.querySelectorAll(`.wc-btn-qty[data-index="${i}"]`).forEach(b => b.classList.remove('selected-ok', 'selected-adj'));
-      btn.classList.add(choice === 'matches' ? 'selected-ok' : 'selected-adj');
-      const adjEl = document.getElementById('wc-adj-qty-' + i);
-      if (choice === 'adjusted') { adjEl.classList.remove('hidden'); document.getElementById('wc-qty-input-' + i).select(); }
-      else { adjEl.classList.add('hidden'); }
-      updateWCItemDone(i);
+  const notesInput = document.getElementById('wc-notes-input-' + jiIdx);
+  if (notesInput) {
+    notesInput.addEventListener('input', e => {
+      state.weeklyCheck.decisions[jiIdx].notes = e.target.value.trim();
     });
-  });
-
-  document.getElementById('wc-qty-input-' + i).addEventListener('input', e => {
-    const val = parseInt(e.target.value, 10);
-    state.weeklyCheck.decisions[i].physicalQty = isNaN(val) ? null : val;
-    updateWCItemDone(i);
-  });
-
-  document.getElementById('wc-reason-input-' + i).addEventListener('input', e => {
-    state.weeklyCheck.decisions[i].reason = e.target.value.trim();
-    updateWCItemDone(i);
-  });
+  }
 }
 
-function wireWCGroupHeaders() {
-  document.querySelectorAll('.wc-btn-backorder').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const jiIdx = parseInt(btn.dataset.jiidx, 10);
-      const ref   = btn.dataset.ref;
-      const isActive = btn.classList.contains('active');
-      const newVal = isActive ? '' : 'Yes';
-      btn.disabled = true;
-      const result = await api.post('setBackOrder', { ref, backOrder: newVal });
-      btn.disabled = false;
-      if (!result.success) { showToast('Error: ' + result.error, 'error'); return; }
-      const ji = state.weeklyCheck.joined[jiIdx];
-      if (ji) ji.catalogItem.backOrder = !isActive;
-      btn.classList.toggle('active', !isActive);
-      btn.innerHTML = `&#8987; ${!isActive ? 'On Back Order' : 'Mark Back Order'}`;
-      showToast(newVal ? 'Marked as Back Order' : 'Back Order cleared', 'success');
-    });
-  });
+function updateWCGroupDone(jiIdx) {
+  const dec = state.weeklyCheck.decisions[jiIdx];
+  dec.done  = dec.status !== null;
+  const el  = document.getElementById('wc-item-' + jiIdx);
+  if (el) el.classList.toggle('done', dec.done);
+  updateWCProgress();
 }
 
-function updateWCItemDone(i) {
-  const dec  = state.weeklyCheck.decisions[i];
-  const item = state.weeklyCheck.items[i];
-  const physQty  = dec.physicalQty ?? item.qty;
-  const variance = physQty - item.qty;
-  const qtySet   = dec.qtyMode === 'matches' || (dec.qtyMode === 'adjusted' && dec.physicalQty !== null);
-  const needsReason = dec.integrityStatus === 'flagged' || (dec.qtyMode === 'adjusted' && variance !== 0);
-  const reasonEl = document.getElementById('wc-reason-' + i);
-  if (needsReason) { reasonEl.classList.remove('hidden'); }
-  else { reasonEl.classList.add('hidden'); dec.reason = ''; }
-  dec.done = dec.integrityStatus !== null && qtySet && (!needsReason || dec.reason.length > 0);
-  document.getElementById('wc-card-' + i).classList.toggle('done', dec.done);
-  checkWCFinishReady();
-}
-
-function checkWCFinishReady() {
-  const allDone  = state.weeklyCheck.decisions.every(d => d.done);
+function updateWCProgress() {
+  const done  = state.weeklyCheck.decisions.filter(d => d.done).length;
+  const total = state.weeklyCheck.joined.length;
+  const el    = document.getElementById('wc-progress');
+  if (el) el.textContent = `${done} / ${total} items checked`;
   const finishEl = document.getElementById('wc-finish-area');
-  if (finishEl) finishEl.classList.toggle('hidden', !allDone);
+  if (finishEl) finishEl.classList.toggle('hidden', done < total);
 }
 
 async function submitWeeklyCheck() {
-  const { items, decisions, joined } = state.weeklyCheck;
+  const { joined, decisions, checkedBy } = state.weeklyCheck;
   const btn = document.getElementById('btn-wc-finish');
-  const toSubmit = [];
-  items.forEach((item, i) => {
-    const dec = decisions[i];
-    const physQty  = dec.qtyMode === 'matches' ? item.qty : (dec.physicalQty ?? item.qty);
-    const variance = physQty - item.qty;
-    if (dec.integrityStatus === 'flagged' || variance !== 0) toSubmit.push({ item, dec, physQty, variance });
-  });
+  setLoading(btn, 'Finishing…');
 
-  setLoading(btn, toSubmit.length > 0 ? `Saving ${toSubmit.length} record(s)…` : 'Finishing…');
-  let errorCount = 0;
-  for (const { item, dec, physQty } of toSubmit) {
-    const result = await api.post('reconcile', {
-      gtin: item.gtin, lot: item.lot, expiry: item.expiry,
-      physicalCount: physQty, integrityStatus: dec.integrityStatus === 'flagged' ? 'Flagged' : 'OK',
-      reason: dec.reason, location: item.location || ''
-    });
-    if (!result.success) { errorCount++; showToast('Error (' + esc(item.name || item.gtin) + '): ' + result.error, 'error'); }
-    else item.qty = physQty;
+  // Auto-retire "Do Not Order" items confirmed as Out
+  for (let jiIdx = 0; jiIdx < joined.length; jiIdx++) {
+    const ji  = joined[jiIdx];
+    const dec = decisions[jiIdx];
+    if (dec.status === 'out' && ji.catalogItem.orderType === 'Do Not Order' && !ji.catalogItem.retired) {
+      const r = await api.post('setRetired', { ref: ji.catalogItem.ref, retired: true });
+      if (r.success) ji.catalogItem.retired = true;
+    }
   }
-  if (errorCount > 0) { resetButton(btn, 'Finish Check'); return; }
-  joined.forEach(ji => { ji.totalPieces = ji.lots.reduce((sum, lot) => sum + (lot.qty || 0), 0); });
 
-  // Log all checked items to Check History sheet
-  const checkedBy = state.weeklyCheck.checkedBy || 'Unknown';
-  const historyRows = items.map((item, i) => {
-    const dec = decisions[i];
-    const physQty = dec.qtyMode === 'matches' ? item.qty : (dec.physicalQty ?? item.qty);
+  // Log one row per catalog item to Check History
+  const historyRows = joined.map((ji, jiIdx) => {
+    const dec    = decisions[jiIdx];
+    const status = dec.status === 'out' ? 'Out of Stock' : dec.status === 'low' ? 'Low Stock' : 'OK';
     return {
-      gtin: item.gtin,
-      name: item.name || item.gtin,
-      location: item.location || '',
-      qty: physQty,
-      integrityStatus: dec.integrityStatus === 'flagged' ? 'Flagged' : 'OK',
-      notes: dec.flagNote || dec.reason || ''
+      gtin:            ji.catalogItem.ref,
+      name:            ji.catalogItem.name || ji.catalogItem.ref,
+      location:        ji.catalogItem.location || '',
+      qty:             ji.totalPieces,
+      integrityStatus: 'OK',
+      notes:           dec.notes || (dec.status !== 'ok' ? status : '')
     };
   });
-  await api.post('logCheckHistory', { checkedBy, rows: historyRows });
 
-  renderWCSummary(items, decisions, toSubmit, joined);
+  const histResult = await api.post('logCheckHistory', { checkedBy: checkedBy || 'Unknown', rows: historyRows });
+  if (!histResult.success) {
+    resetButton(btn, 'Finish Check');
+    showToast('Error saving check history: ' + histResult.error, 'error');
+    return;
+  }
+
+  renderWCSummary(joined, decisions);
 }
 
-function renderWCSummary(items, decisions, submitted, joined) {
+function renderWCSummary(joined, decisions) {
   const container = document.getElementById('wc-container');
-  const flagged   = submitted.filter(s => s.dec.integrityStatus === 'flagged');
-  const adjusted  = submitted.filter(s => s.variance !== 0);
-  const passed    = items.length - submitted.length;
   const timeStr   = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+  const dateStr   = new Date().toLocaleDateString('en-GB');
 
-  const flagList = flagged.length === 0 ? '' : `<div class="wc-summary-section">
-    <div class="wc-summary-section-title">Integrity Flags</div>
-    ${flagged.map(s => `<div class="wc-summary-flag-item">
-      <span class="wc-summary-item-name">${esc(s.item.name || s.item.gtin)}</span>
-      ${s.dec.flagNote ? `<span class="wc-summary-note">${esc(s.dec.flagNote)}</span>` : ''}
-    </div>`).join('')}
-  </div>`;
+  const okCount  = decisions.filter(d => d.status === 'ok').length;
+  const lowCount = decisions.filter(d => d.status === 'low').length;
+  const outCount = decisions.filter(d => d.status === 'out').length;
 
-  const adjList = adjusted.length === 0 ? '' : `<div class="wc-summary-section">
-    <div class="wc-summary-section-title">Quantity Adjustments</div>
-    ${adjusted.map(s => `<div class="wc-summary-flag-item">
-      <span class="wc-summary-item-name">${esc(s.item.name || s.item.gtin)}</span>
-      <span class="wc-summary-variance ${s.variance > 0 ? 'pos' : 'neg'}">${s.variance > 0 ? '+' : ''}${s.variance}</span>
-    </div>`).join('')}
-  </div>`;
+  // Group items needing action by order type (exclude Do Not Order — no ordering action needed)
+  const actionGroups = {};
+  joined.forEach((ji, jiIdx) => {
+    const dec = decisions[jiIdx];
+    if (dec.status === 'ok') return;
+    const ot = ji.catalogItem.orderType || 'Other';
+    if (ot === 'Do Not Order') return;
+    if (!actionGroups[ot]) actionGroups[ot] = [];
+    actionGroups[ot].push({ ji, dec });
+  });
 
-  const belowNorm      = (joined || []).filter(ji => { const np = ji.catalogItem.norm * ji.catalogItem.piecesPerUnit; return np > 0 && ji.totalPieces < np; });
-  const orderFormItems = belowNorm.filter(ji => ji.catalogItem.orderType === 'Order Form');
-  const eprItems       = belowNorm.filter(ji => ji.catalogItem.orderType === 'EPR');
-  const informSCMItems = belowNorm.filter(ji => ji.catalogItem.orderType === 'Inform SCM');
-  const otherItems     = belowNorm.filter(ji => !['Order Form', 'EPR', 'Inform SCM'].includes(ji.catalogItem.orderType || ''));
-
-  function orderItemHtml(ji, showQty = true) {
-    const normPieces = ji.catalogItem.norm * ji.catalogItem.piecesPerUnit;
-    const shortUnits = Math.ceil((normPieces - ji.totalPieces) / (ji.catalogItem.piecesPerUnit || 1));
-    return `<div class="wc-order-item">
-      <div class="wc-order-item-name">${esc(ji.catalogItem.name || ji.catalogItem.ref)}</div>
-      <div class="wc-order-item-detail">REF: ${esc(ji.catalogItem.ref)} &middot; Have: ${fmtPieces(ji.totalPieces, ji.catalogItem.orderingUnit, ji.catalogItem.piecesPerUnit)}${showQty ? ` &middot; Order: ${shortUnits} ${esc(ji.catalogItem.orderingUnit)}` : ''}</div>
-    </div>`;
-  }
-  function generateCopyText(jiList, title, showQty = true) {
-    return [title, '', ...jiList.map(ji => {
-      const np = ji.catalogItem.norm * ji.catalogItem.piecesPerUnit;
-      const su = Math.ceil((np - ji.totalPieces) / (ji.catalogItem.piecesPerUnit || 1));
-      return showQty
-        ? `- ${ji.catalogItem.name || ji.catalogItem.ref} (REF: ${ji.catalogItem.ref}): order ${su} ${ji.catalogItem.orderingUnit}`
-        : `- ${ji.catalogItem.name || ji.catalogItem.ref} (REF: ${ji.catalogItem.ref})`;
-    })].join('\n');
-  }
-  function orderSectionHtml(items, title, copyKey, showQty = true) {
-    if (items.length === 0) return '';
+  const copyDataMap = {};
+  function orderSectionHtml(ot, items) {
+    const key  = ot.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const text = `${ot} — ${dateStr}\n\n` + items.map(({ ji, dec }) =>
+      `- ${ji.catalogItem.name || ji.catalogItem.ref} (REF: ${ji.catalogItem.ref}): ${dec.status === 'out' ? 'OUT' : 'LOW'}${dec.notes ? ' — ' + dec.notes : ''}`
+    ).join('\n');
+    copyDataMap[key] = text;
     return `<div class="wc-summary-section wc-order-section">
-      <div class="wc-summary-section-title">${esc(title)}</div>
-      <div style="padding:0 16px 4px">${items.map(ji => orderItemHtml(ji, showQty)).join('')}</div>
-      <div style="padding:0 16px 14px"><button type="button" class="btn-secondary wc-copy-btn" data-copy="${esc(copyKey)}">Copy to clipboard</button></div>
+      <div class="wc-summary-section-title">${esc(ot)}</div>
+      <div style="padding:0 16px 4px">${items.map(({ ji, dec }) => {
+        const statusBadge = dec.status === 'out'
+          ? '<span class="badge badge-expired" style="font-size:.6rem">OUT</span>'
+          : '<span class="badge badge-expiring" style="font-size:.6rem">LOW</span>';
+        return `<div class="wc-order-item">
+          <div class="wc-order-item-name">${esc(ji.catalogItem.name || ji.catalogItem.ref)} ${statusBadge}</div>
+          <div class="wc-order-item-detail">REF: ${esc(ji.catalogItem.ref)}${dec.notes ? ' &mdash; ' + esc(dec.notes) : ''}</div>
+        </div>`;
+      }).join('')}</div>
+      <div style="padding:0 16px 14px"><button type="button" class="btn-secondary wc-copy-btn" data-copy="${esc(key)}">Copy to clipboard</button></div>
     </div>`;
   }
 
-  const noOrdersHtml = belowNorm.length === 0 ? `<div class="wc-summary-section">
-    <div class="wc-summary-section-title" style="color:var(--green)">&#10003; All stock at or above norm</div>
-  </div>` : '';
-
-  const copyDataMap = {
-    'order-form': { list: orderFormItems, title: 'Order Form List', showQty: true },
-    'epr':        { list: eprItems,       title: 'EPR Order List',  showQty: true },
-    'inform-scm': { list: informSCMItems, title: 'Inform SCM List', showQty: false },
-    'other':      { list: otherItems,     title: 'Other Items',     showQty: true }
-  };
-  const dateStr = new Date().toLocaleDateString('en-GB');
+  const orderEntries = Object.entries(actionGroups);
+  const orderSectionsHtml = orderEntries.length > 0
+    ? orderEntries.map(([ot, items]) => orderSectionHtml(ot, items)).join('')
+    : `<div class="wc-summary-section"><div class="wc-summary-section-title" style="color:var(--green)">&#10003; No ordering action required</div></div>`;
 
   container.innerHTML = `<div class="wc-summary">
     <div class="wc-summary-title">Check Complete &mdash; ${esc(timeStr)}</div>
     <div class="wc-summary-stats">
-      <div class="wc-stat"><span class="wc-stat-num">${items.length}</span><span class="wc-stat-lbl">Checked</span></div>
-      <div class="wc-stat ${flagged.length > 0 ? 'wc-stat-warn' : 'wc-stat-ok'}"><span class="wc-stat-num">${flagged.length}</span><span class="wc-stat-lbl">Flagged</span></div>
-      <div class="wc-stat ${adjusted.length > 0 ? 'wc-stat-warn' : 'wc-stat-ok'}"><span class="wc-stat-num">${adjusted.length}</span><span class="wc-stat-lbl">Adjusted</span></div>
-      <div class="wc-stat wc-stat-ok"><span class="wc-stat-num">${passed}</span><span class="wc-stat-lbl">All OK</span></div>
+      <div class="wc-stat wc-stat-ok"><span class="wc-stat-num">${okCount}</span><span class="wc-stat-lbl">All OK</span></div>
+      <div class="wc-stat ${lowCount > 0 ? 'wc-stat-warn' : 'wc-stat-ok'}"><span class="wc-stat-num">${lowCount}</span><span class="wc-stat-lbl">Low Stock</span></div>
+      <div class="wc-stat ${outCount > 0 ? 'wc-stat-danger' : 'wc-stat-ok'}"><span class="wc-stat-num">${outCount}</span><span class="wc-stat-lbl">Out of Stock</span></div>
     </div>
-    ${flagList}${adjList}${noOrdersHtml}
-    ${orderSectionHtml(orderFormItems, 'Order Form List', 'order-form', true)}
-    ${orderSectionHtml(eprItems,       'EPR Order List',  'epr',        true)}
-    ${orderSectionHtml(informSCMItems, 'Inform SCM List', 'inform-scm', false)}
-    ${orderSectionHtml(otherItems,     'Other Items Below Norm', 'other', true)}
+    ${orderSectionsHtml}
     <button id="btn-wc-done" class="btn-primary">Done</button>
   </div>`;
 
   container.querySelectorAll('.wc-copy-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      const key  = btn.dataset.copy;
-      const data = copyDataMap[key];
-      if (!data) return;
-      const text = generateCopyText(data.list, data.title + ' — ' + dateStr, data.showQty);
+      const text = copyDataMap[btn.dataset.copy];
+      if (!text) return;
       navigator.clipboard.writeText(text).then(
         () => showToast('Copied to clipboard', 'success'),
         () => showToast('Copy failed — please copy manually', 'error')

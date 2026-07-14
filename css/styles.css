@@ -1151,16 +1151,23 @@ main {
    WEEKLY CHECK — CATALOG ITEM GROUPS
    ===================================================================== */
 
-.wc-catalog-item-group { margin-bottom: 14px; }
+.wc-catalog-item-group {
+  margin-bottom: 14px;
+  border: 1.5px solid var(--outline-subtle);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-1);
+}
+.wc-catalog-item-group.done {
+  opacity: .5;
+  border-color: var(--green-b) !important;
+}
 
 .wc-catalog-item-header {
   padding: 12px 16px 10px;
   background: var(--surface-variant);
-  border-radius: var(--r-lg) var(--r-lg) 0 0;
-  border: 1.5px solid var(--outline-subtle);
 }
 .wc-catalog-item-group > .wc-item-card           { border-radius: 0; border-top: none; box-shadow: none; }
-.wc-catalog-item-group > .wc-no-stock            { border-radius: 0 0 var(--r-lg) var(--r-lg); border-top: none; }
 .wc-catalog-item-group > .wc-item-card:last-child { border-bottom-left-radius: var(--r-lg); border-bottom-right-radius: var(--r-lg); }
 
 .wc-catalog-item-title {
@@ -1188,9 +1195,89 @@ main {
   color: var(--text3);
   font-style: italic;
   background: var(--surface);
-  border: 1.5px solid var(--outline-subtle);
-  border-top: none;
-  border-radius: 0 0 var(--r-lg) var(--r-lg);
+  border-top: 1px solid var(--outline-subtle);
+}
+
+/* Lot chips summary row inside per-item card */
+.wc-lot-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 6px 16px 8px;
+  background: var(--surface);
+  border-top: 1px solid var(--outline-subtle);
+}
+.wc-lot-chip {
+  font-size: .72rem;
+  font-family: var(--heading);
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--surface-variant);
+  border: 1px solid var(--outline);
+  color: var(--text2);
+  white-space: nowrap;
+}
+.wc-lot-chip.lot-expired  { color: var(--red);   background: var(--red-bg);   border-color: var(--red-b); }
+.wc-lot-chip.lot-expiring { color: var(--amber); background: var(--amber-bg); border-color: var(--amber-b); }
+
+/* Status row (OK / Low / Out) */
+.wc-status-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--outline-subtle);
+}
+.wc-btn-status {
+  flex: 1;
+  min-height: 44px;
+  padding: 9px 12px;
+  font-size: .88rem;
+  font-weight: 600;
+  font-family: var(--heading);
+  border: 1.5px solid var(--outline);
+  border-radius: var(--r);
+  background: var(--surface-variant);
+  color: var(--text2);
+  cursor: pointer;
+  transition: background .12s, border-color .12s, color .12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.wc-btn-status:active { opacity: .75; }
+.wc-btn-status.selected-ok  { background: var(--green-bg);  border-color: var(--green-b);  color: var(--green); }
+.wc-btn-status.selected-low { background: var(--amber-bg);  border-color: var(--amber-b);  color: var(--amber); }
+.wc-btn-status.selected-out { background: var(--red-bg);    border-color: var(--red-b);    color: var(--red); }
+
+/* Notes field */
+.wc-notes-field {
+  padding: 0 16px 10px;
+  background: var(--surface);
+  border-top: 1px solid var(--outline-subtle);
+}
+.wc-notes-field input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1.5px solid var(--outline);
+  border-radius: var(--r-sm);
+  font-size: .88rem;
+  font-family: var(--body);
+  background: var(--surface);
+  color: var(--text);
+  box-sizing: border-box;
+  margin-top: 8px;
+}
+.wc-notes-field input:focus { outline: none; border-color: var(--primary); }
+
+/* Progress counter */
+.wc-progress-wrap { padding: 0 0 10px; text-align: right; }
+.wc-progress {
+  font-family: var(--heading);
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--text2);
+  margin: 0;
 }
 
 /* =====================================================================
@@ -1208,7 +1295,7 @@ main {
 
 .wc-summary-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   margin-bottom: 20px;
 }
@@ -1220,8 +1307,9 @@ main {
   text-align: center;
   box-shadow: var(--shadow-1);
 }
-.wc-stat-ok   { border-color: var(--green-b); background: var(--green-bg); }
-.wc-stat-warn { border-color: var(--amber-b); background: var(--amber-bg); }
+.wc-stat-ok     { border-color: var(--green-b); background: var(--green-bg); }
+.wc-stat-warn   { border-color: var(--amber-b); background: var(--amber-bg); }
+.wc-stat-danger { border-color: var(--red-b);   background: var(--red-bg); }
 .wc-stat-num {
   display: block;
   font-family: var(--heading);
@@ -1229,8 +1317,9 @@ main {
   font-weight: 700;
   line-height: 1.1;
 }
-.wc-stat-ok   .wc-stat-num { color: var(--green); }
-.wc-stat-warn .wc-stat-num { color: var(--amber); }
+.wc-stat-ok     .wc-stat-num { color: var(--green); }
+.wc-stat-warn   .wc-stat-num { color: var(--amber); }
+.wc-stat-danger .wc-stat-num { color: var(--red); }
 .wc-stat-lbl {
   display: block;
   font-family: var(--heading);

@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Consumables Tracker</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=20260630c">
+  <link rel="stylesheet" href="css/styles.css?v=20260630d">
 </head>
 <body>
 
@@ -347,6 +347,13 @@
             <label for="edit-expiry-warning">Warn before expiry (days)</label>
             <input type="number" id="edit-expiry-warning" value="14" min="1" max="365" inputmode="numeric">
           </div>
+          <div class="field">
+            <label>Back Order</label>
+            <div class="dash-prefs-row" style="margin:0">
+              <input type="checkbox" id="edit-back-order" class="dash-prefs-toggle">
+              <label class="dash-prefs-label" for="edit-back-order">On back order (hidden from Weekly Check)</label>
+            </div>
+          </div>
           <button type="submit" id="btn-edit-save" class="btn-primary">Save Changes</button>
           <button type="button" id="btn-edit-cancel" class="btn-secondary">Cancel</button>
         </form>
@@ -368,9 +375,9 @@
   </div>
 
   <!-- Scripts — load config first so API_URL is defined before api.js runs -->
-  <script src="js/config.js?v=20260630c"></script>
-  <script src="js/api.js?v=20260630c"></script>
-  <script src="js/app.js?v=20260630c"></script>
+  <script src="js/config.js?v=20260630d"></script>
+  <script src="js/api.js?v=20260630d"></script>
+  <script src="js/app.js?v=20260630d"></script>
 
 </body>
 </html>

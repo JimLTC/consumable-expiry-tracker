@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>Consumables Tracker</title>
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="css/styles.css?v=20260630f">
+  <link rel="stylesheet" href="css/styles.css?v=20260630g">
 </head>
 <body>
 
@@ -104,6 +104,13 @@
           <div class="field">
             <label for="ai-expiry-warning">Warn before expiry (days)</label>
             <input type="number" id="ai-expiry-warning" value="14" min="1" max="365" inputmode="numeric">
+          </div>
+          <div class="field">
+            <label>Count Only</label>
+            <div class="dash-prefs-row" style="margin:0">
+              <input type="checkbox" id="ai-count-only" class="dash-prefs-toggle">
+              <label class="dash-prefs-label" for="ai-count-only">SCM managed &mdash; weekly count sets stock, no lot/expiry tracking</label>
+            </div>
           </div>
           <button type="submit" id="btn-add-item-submit" class="btn-primary">Add to Catalog &amp; Select</button>
         </form>
@@ -354,6 +361,13 @@
               <label class="dash-prefs-label" for="edit-back-order">On back order (hidden from Weekly Check)</label>
             </div>
           </div>
+          <div class="field">
+            <label>Count Only</label>
+            <div class="dash-prefs-row" style="margin:0">
+              <input type="checkbox" id="edit-count-only" class="dash-prefs-toggle">
+              <label class="dash-prefs-label" for="edit-count-only">SCM managed &mdash; weekly count sets stock, no lot/expiry tracking</label>
+            </div>
+          </div>
           <button type="submit" id="btn-edit-save" class="btn-primary">Save Changes</button>
           <button type="button" id="btn-edit-cancel" class="btn-secondary">Cancel</button>
         </form>
@@ -375,9 +389,9 @@
   </div>
 
   <!-- Scripts — load config first so API_URL is defined before api.js runs -->
-  <script src="js/config.js?v=20260630f"></script>
-  <script src="js/api.js?v=20260630f"></script>
-  <script src="js/app.js?v=20260630f"></script>
+  <script src="js/config.js?v=20260630g"></script>
+  <script src="js/api.js?v=20260630g"></script>
+  <script src="js/app.js?v=20260630g"></script>
 
 </body>
 </html>

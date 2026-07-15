@@ -238,7 +238,8 @@ async function submitAddCatalogItem() {
     location:          v('ai-location'),
     expiryWarningDays: parseInt(document.getElementById('ai-expiry-warning').value, 10) || 14,
     company:           v('ai-company'),
-    orderType:         document.getElementById('ai-order-type').value || 'Order Form'
+    orderType:         document.getElementById('ai-order-type').value || 'Order Form',
+    countOnly:         document.getElementById('ai-count-only').checked
   });
   resetButton(btn, 'Add to Catalog & Select');
 
@@ -270,6 +271,18 @@ function clearSICatalogSelection() {
   document.getElementById('si-catalog-search').focus();
 }
 
+// Clears only the batch fields, keeping the selected catalog item —
+// so multi-lot deliveries can be logged without reselecting the item
+function resetScanInLotFields() {
+  ['si-lot', 'si-expiry'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('si-qty').value = '1';
+  document.getElementById('si-expiry-warning').classList.add('hidden');
+  document.getElementById('si-lot').focus();
+}
+
 function clearScanInForm() {
   ['si-lot', 'si-expiry'].forEach(id => {
     const el = document.getElementById(id);
@@ -288,10 +301,10 @@ async function submitScanIn(gtin, lot, expiry, qty, itemName) {
   resetButton(btn, 'Log Stock In');
   if (!result.success) { showToast('Error: ' + result.error, 'error'); return; }
   const msg = result.action === 'created'
-    ? `New batch created. Qty: ${result.newQty}`
-    : `Updated existing batch. New qty: ${result.newQty}`;
+    ? `Batch logged (qty ${result.newQty}) — add another lot or tap Change`
+    : `Existing batch topped up (new qty ${result.newQty}) — add another lot or tap Change`;
   showToast(msg, 'success');
-  clearScanInForm();
+  resetScanInLotFields();
 }
 
 // =====================================================================
@@ -998,6 +1011,7 @@ function openEditModal(ref) {
   document.getElementById('edit-company').value      = cat ? (cat.company || '') : '';
   document.getElementById('edit-order-type').value   = cat ? (cat.orderType || 'Order Form') : 'Order Form';
   document.getElementById('edit-back-order').checked = cat ? (cat.backOrder === true) : false;
+  document.getElementById('edit-count-only').checked = cat ? (cat.countOnly === true) : false;
   show('edit-modal');
 }
 
@@ -1010,6 +1024,7 @@ async function submitEditCatalogItem() {
   const ref       = v('edit-ref');
   const name      = v('edit-name');
   const backOrder = document.getElementById('edit-back-order').checked;
+  const countOnly = document.getElementById('edit-count-only').checked;
   if (!name) { showToast('Item Name is required', 'error'); return; }
 
   setLoading(btn, 'Saving…');
@@ -1029,6 +1044,7 @@ async function submitEditCatalogItem() {
   if (!result.success) { resetButton(btn, 'Save Changes'); showToast('Error: ' + result.error, 'error'); return; }
 
   await api.post('setBackOrder', { ref, value: backOrder });
+  await api.post('setCountOnly', { ref, value: countOnly });
   resetButton(btn, 'Save Changes');
 
   showToast('Catalog item updated', 'success');
@@ -1193,8 +1209,13 @@ function renderWCItemGroupCard(ji, jiIdx) {
     : '';
   const systemDisplay = `System: ${systemUnits} ${unit}`;
 
+  const scmBadge = catalogItem.countOnly
+    ? '<span class="badge badge-scm">SCM count</span>' : '';
+
   const lotsSection = lots.length === 0
-    ? '<div class="wc-no-stock">No inventory record &mdash; check physical shelf</div>'
+    ? (catalogItem.countOnly
+        ? '<div class="wc-no-stock">Count-managed item &mdash; enter what you find</div>'
+        : '<div class="wc-no-stock">No inventory record &mdash; check physical shelf</div>')
     : `<div class="wc-lot-summary">${lots.map(l => {
         const le = l.expiry && l.expiry < todayNow;
         const lx = !le && l.expiry && daysDiff(todayNow, l.expiry) <= wDays;
@@ -1208,6 +1229,7 @@ function renderWCItemGroupCard(ji, jiIdx) {
     <div class="wc-catalog-item-header">
       <div class="wc-catalog-item-title">
         <span class="wc-catalog-item-name">${esc(catalogItem.name || catalogItem.ref)}</span>
+        ${scmBadge}
         ${expiryBadge}
       </div>
       <div class="wc-catalog-item-details">
@@ -1310,7 +1332,7 @@ async function submitWeeklyCheck() {
   const btn = document.getElementById('btn-wc-finish');
   setLoading(btn, 'Finishing…');
 
-  // Auto-retire "Do Not Order" items confirmed as Out
+  // Auto-retire "Do Not Order" items confirmed as Out; sync count-only items
   for (let jiIdx = 0; jiIdx < joined.length; jiIdx++) {
     const ji     = joined[jiIdx];
     const dec    = decisions[jiIdx];
@@ -1318,6 +1340,14 @@ async function submitWeeklyCheck() {
     if (status === 'out' && ji.catalogItem.orderType === 'Do Not Order' && !ji.catalogItem.retired) {
       const r = await api.post('setRetired', { ref: ji.catalogItem.ref, retired: true });
       if (r.success) ji.catalogItem.retired = true;
+    }
+    // Count-only (SCM-managed) items: the counted total becomes the inventory qty
+    if (ji.catalogItem.countOnly && dec.countedQty !== null) {
+      await api.post('setCountedQty', {
+        gtin:      ji.catalogItem.ref,
+        qty:       wcCountedPieces(dec, ji) ?? 0,
+        checkedBy: checkedBy || 'Unknown'
+      });
     }
   }
 

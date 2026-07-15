@@ -1472,6 +1472,11 @@ main {
   color: var(--orange);
   border: 1px solid var(--orange-b);
 }
+.badge-scm {
+  background: #E1F0F5;
+  color: #0277BD;
+  border: 1px solid #90CAF9;
+}
 
 /* =====================================================================
    WEEKLY CHECK — BACK ORDER TOGGLE

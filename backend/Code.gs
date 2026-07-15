@@ -53,7 +53,8 @@ const CC = {
   COMPANY:        8,  // I: Manufacturer / vendor
   ORDER_TYPE:     9,  // J: Order Form / EPR / Consigned / OMS / ENT / Inform SCM / Do Not Order
   RETIRED:       10,  // K: 'Yes' when item is Do Not Order and retired
-  BACK_ORDER:    11   // L: 'Yes' when vendor has no stock (app-managed)
+  BACK_ORDER:    11,  // L: 'Yes' when vendor has no stock (app-managed)
+  COUNT_ONLY:    12   // M: 'Yes' when SCM-managed — no lot tracking, weekly count sets qty
 };
 
 // --- Archive-only extra columns (after Active Inventory A–K) ---
@@ -132,6 +133,10 @@ function doPost(e) {
       result = setBackOrder(params);
     } else if (action === 'setRetired') {
       result = setRetired(params);
+    } else if (action === 'setCountOnly') {
+      result = setCountOnly(params);
+    } else if (action === 'setCountedQty') {
+      result = setCountedQty(params);
     } else {
       result = { success: false, error: 'Unknown action: ' + action };
     }
@@ -171,7 +176,8 @@ function getCatalog() {
       company:           String(row[CC.COMPANY]         || '').trim(),
       orderType:         String(row[CC.ORDER_TYPE]      || '').trim(),
       retired:           String(row[CC.RETIRED]         || '').trim().toLowerCase() === 'yes',
-      backOrder:         String(row[CC.BACK_ORDER]      || '').trim().toLowerCase() === 'yes'
+      backOrder:         String(row[CC.BACK_ORDER]      || '').trim().toLowerCase() === 'yes',
+      countOnly:         String(row[CC.COUNT_ONLY]      || '').trim().toLowerCase() === 'yes'
     });
   }
   return { success: true, items: items };
@@ -474,6 +480,106 @@ function setRetired(params) {
   }
 }
 
+/**
+ * Set or clear the Count Only flag for an Item Catalog entry.
+ * Count-only items are SCM-managed: no lot tracking, weekly count sets qty.
+ */
+function setCountOnly(params) {
+  const ref   = String(params.ref   || '').trim();
+  const value = params.value ? 'Yes' : '';
+
+  if (!ref) return { success: false, error: 'REF is required' };
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return { success: false, error: 'Server busy' };
+
+  try {
+    const sheet  = getSheet(CATALOG_SHEET);
+    const values = sheet.getDataRange().getValues();
+    for (let i = 1; i < values.length; i++) {
+      if (String(values[i][CC.REF]).trim() === ref) {
+        sheet.getRange(i + 1, CC.COUNT_ONLY + 1).setValue(value);
+        return { success: true };
+      }
+    }
+    return { success: false, error: 'Item not found in catalog' };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Set a count-only item's Active Inventory quantity absolutely.
+ * Called from Weekly Check for items flagged Count Only. The counted total
+ * goes on the item's first inventory row (a lotless row is created if none
+ * exists); any additional lot rows are zeroed since lots no longer matter.
+ * Every change is logged to the Reconciliation Log.
+ */
+function setCountedQty(params) {
+  const gtin      = String(params.gtin || '').trim();
+  const qty       = Number(params.qty);
+  const checkedBy = String(params.checkedBy || '').trim();
+
+  if (!gtin)                 return { success: false, error: 'GTIN/REF is required' };
+  if (isNaN(qty) || qty < 0) return { success: false, error: 'qty must be a non-negative number' };
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return { success: false, error: 'Server busy — please try again' };
+
+  try {
+    const activeSheet = getSheet(ACTIVE_SHEET);
+    const reconSheet  = getSheet(RECON_SHEET);
+    const values      = activeSheet.getDataRange().getValues();
+    const now         = new Date();
+
+    const rowNums = [];
+    let systemQty = 0;
+    for (let i = 1; i < values.length; i++) {
+      if (String(values[i][C.GTIN]).trim() === gtin) {
+        rowNums.push(i + 1);
+        systemQty += Number(values[i][C.QTY]) || 0;
+      }
+    }
+
+    const variance = qty - systemQty;
+
+    if (rowNums.length === 0) {
+      // No inventory record yet — create a single lotless row from catalog data
+      let name = '', location = '';
+      const catValues = getSheet(CATALOG_SHEET).getDataRange().getValues();
+      for (let i = 1; i < catValues.length; i++) {
+        if (String(catValues[i][CC.REF]).trim() === gtin) {
+          name     = String(catValues[i][CC.NAME]     || '').trim();
+          location = String(catValues[i][CC.LOCATION] || '').trim();
+          break;
+        }
+      }
+      activeSheet.appendRow([gtin, '', '', qty, name, now, now, checkedBy, location, 'Piece', '']);
+    } else {
+      activeSheet.getRange(rowNums[0], C.QTY + 1).setValue(qty);
+      activeSheet.getRange(rowNums[0], C.LAST_UPDATED + 1).setValue(now);
+      if (checkedBy) activeSheet.getRange(rowNums[0], C.ACTION_BY + 1).setValue(checkedBy);
+      for (let k = 1; k < rowNums.length; k++) {
+        activeSheet.getRange(rowNums[k], C.QTY + 1).setValue(0);
+        activeSheet.getRange(rowNums[k], C.LAST_UPDATED + 1).setValue(now);
+      }
+    }
+
+    if (variance !== 0) {
+      reconSheet.appendRow([
+        now, gtin, '', '',
+        systemQty, qty, variance,
+        'Weekly check count (count-only item)', checkedBy,
+        'OK', ''
+      ]);
+    }
+
+    return { success: true, systemQty: systemQty, newQty: qty, variance: variance };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /** Add a new item to the Item Catalog. Returns error if REF already exists. */
 function addCatalogItem(params) {
   const ref               = String(params.ref               || '').trim();
@@ -487,6 +593,7 @@ function addCatalogItem(params) {
   const company           = String(params.company           || '').trim();
   const orderType         = String(params.orderType         || '').trim();
   const retired           = '';  // items never start retired; setRetired sets it explicitly
+  const countOnly         = params.countOnly ? 'Yes' : '';
 
   if (!ref)  return { success: false, error: 'REF is required' };
   if (!name) return { success: false, error: 'Item Name is required' };
@@ -502,9 +609,9 @@ function addCatalogItem(params) {
         return { success: false, error: 'An item with this REF already exists' };
       }
     }
-    // 12 columns A–L; Back Order (L) starts empty
+    // 13 columns A–M; Back Order (L) starts empty
     sheet.appendRow([ref, name, category, norm, orderingUnit, piecesPerUnit, location,
-                     expiryWarningDays, company, orderType, retired, '']);
+                     expiryWarningDays, company, orderType, retired, '', countOnly]);
     return { success: true };
   } finally {
     lock.releaseLock();

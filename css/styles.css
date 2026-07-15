@@ -1563,12 +1563,16 @@ main {
 .hist-session-header {
   padding: 10px 14px;
   background: var(--surface-variant);
-  border-bottom: 1px solid var(--outline-subtle);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 12px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
+.hist-session-header .wc-chevron { color: var(--text3); flex-shrink: 0; }
+.hist-session.open .hist-session-header { border-bottom: 1px solid var(--outline-subtle); }
+.hist-session.open .hist-session-header .wc-chevron { transform: rotate(180deg); }
 
 .hist-session-date {
   font-family: var(--heading);
@@ -1591,7 +1595,8 @@ main {
   border-radius: 10px;
 }
 
-.hist-session-items { padding: 4px 0; }
+.hist-session-items { display: none; padding: 4px 0; }
+.hist-session.open .hist-session-items { display: block; }
 
 .hist-item-row {
   display: flex;

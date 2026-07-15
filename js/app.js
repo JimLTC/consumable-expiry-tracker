@@ -1518,12 +1518,15 @@ function renderHistoryList() {
 
   const sessions = Array.from(sessionMap.values());
 
+  const chevron = `<svg class="wc-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>`;
+
   const listHtml = sessions.length === 0
     ? '<p class="no-items">No check history found.</p>'
-    : sessions.map(session => {
+    : sessions.map((session, idx) => {
         const dateStr = session.timestamp
           ? new Date(session.timestamp.replace(' ', 'T')).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
           : 'Unknown date';
+        const flaggedCount = session.rows.filter(r => (r.integrityStatus || '').toLowerCase() === 'flagged').length;
         const itemRows = session.rows.map(r => {
           const isFlagged = (r.integrityStatus || '').toLowerCase() === 'flagged';
           return `<div class="hist-item-row${isFlagged ? ' hist-item-flagged' : ''}">
@@ -1532,17 +1535,23 @@ function renderHistoryList() {
             ${r.notes ? `<span class="hist-item-note">${esc(r.notes)}</span>` : ''}
           </div>`;
         }).join('');
-        return `<div class="hist-session">
+        return `<div class="hist-session${idx === 0 ? ' open' : ''}">
           <div class="hist-session-header">
             <span class="hist-session-date">${esc(dateStr)}</span>
             <span class="hist-session-by">by ${esc(session.checkedBy || 'Unknown')}</span>
+            ${flaggedCount > 0 ? `<span class="badge badge-expired" style="font-size:.58rem">${flaggedCount} flagged</span>` : ''}
             <span class="hist-session-count">${session.rows.length} item${session.rows.length === 1 ? '' : 's'}</span>
+            ${chevron}
           </div>
           <div class="hist-session-items">${itemRows}</div>
         </div>`;
       }).join('');
 
   container.innerHTML = filterHtml + listHtml;
+
+  container.querySelectorAll('.hist-session-header').forEach(header => {
+    header.addEventListener('click', () => header.closest('.hist-session').classList.toggle('open'));
+  });
 
   document.getElementById('hist-filter-loc').value = filters.location;
   document.getElementById('hist-filter-loc').addEventListener('change', e => {

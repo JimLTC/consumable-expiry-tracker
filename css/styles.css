@@ -1341,6 +1341,23 @@ main {
   color: var(--text);
 }
 
+.wc-sync-note {
+  font-family: var(--heading);
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--green);
+  background: var(--green-bg);
+  border: 1.5px solid var(--green-b);
+  border-radius: var(--r);
+  padding: 9px 12px;
+  margin-bottom: 14px;
+}
+.wc-sync-note.wc-sync-failed {
+  color: var(--red);
+  background: var(--red-bg);
+  border-color: var(--red-b);
+}
+
 .wc-summary-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

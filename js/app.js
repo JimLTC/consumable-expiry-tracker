@@ -93,6 +93,15 @@ function getNormPieces(ref) {
   return (cat.norm || 0) * (cat.piecesPerUnit || 1);
 }
 
+function deriveWCStatus(countedQty, ji) {
+  if (countedQty === null || countedQty === undefined) return null;
+  const ppu  = ji.catalogItem.piecesPerUnit || 1;
+  const norm = (ji.catalogItem.norm || 0) * ppu;
+  if (norm === 0) return countedQty > 0 ? 'ok' : 'out';
+  const counted = countedQty * ppu;
+  return counted >= norm ? 'ok' : counted === 0 ? 'out' : 'low';
+}
+
 async function ensureCatalogLoaded() {
   if (state.catalogMap) return true;
   const result = await api.get('getCatalog');
@@ -1074,7 +1083,7 @@ async function loadWeeklyCheck() {
 
   state.weeklyCheck = {
     joined, items: flatLots,
-    decisions: joined.map(() => ({ status: null, notes: '', done: false })),
+    decisions: joined.map(() => ({ countedQty: null, notes: '', done: false })),
     checkedBy: ''
   };
   showWCNamePrompt(renderWCChecklist);
@@ -1155,17 +1164,18 @@ function renderWCItemGroupCard(ji, jiIdx) {
   const { catalogItem, lots, totalPieces } = ji;
   const todayNow   = today();
   const wDays      = catalogItem.expiryWarningDays || 14;
-  const normPieces = (catalogItem.norm || 0) * (catalogItem.piecesPerUnit || 1);
+  const ppu        = catalogItem.piecesPerUnit || 1;
+  const normPieces = (catalogItem.norm || 0) * ppu;
 
   const anyExpired  = lots.some(l => l.expiry && l.expiry < todayNow);
   const anyExpiring = !anyExpired && lots.some(l => l.expiry && daysDiff(todayNow, l.expiry) <= wDays);
   const expiryBadge = anyExpired ? '<span class="badge badge-expired">Expired</span>'
                     : anyExpiring ? '<span class="badge badge-expiring">Soon</span>' : '';
 
-  const normBadgeCls = normPieces <= 0 ? '' : totalPieces >= normPieces ? 'norm-ok' : totalPieces === 0 ? 'norm-critical' : 'norm-low';
-  const normLabel    = normPieces > 0 ? (totalPieces >= normPieces ? 'OK' : totalPieces === 0 ? 'Critical' : 'Low') : '';
-  const piecesDisplay = fmtPieces(totalPieces, catalogItem.orderingUnit, catalogItem.piecesPerUnit);
-  const normDisplay   = catalogItem.norm > 0 ? `Norm: ${catalogItem.norm} ${catalogItem.orderingUnit}` : '';
+  const unit          = catalogItem.orderingUnit || 'units';
+  const systemUnits   = ppu > 1 ? (totalPieces / ppu).toFixed(ppu >= 10 ? 0 : 1).replace(/\.0$/, '') : totalPieces;
+  const normDisplay   = catalogItem.norm > 0 ? `Norm: ${catalogItem.norm} ${unit}` : '';
+  const systemDisplay = `System: ${systemUnits} ${unit}`;
 
   const lotsSection = lots.length === 0
     ? '<div class="wc-no-stock">No inventory record &mdash; check physical shelf</div>'
@@ -1176,7 +1186,6 @@ function renderWCItemGroupCard(ji, jiIdx) {
         const chip = [l.lot ? esc(l.lot) : 'No lot', l.expiry ? esc(formatExpiry(l.expiry)) : ''].filter(Boolean).join(' · ');
         return `<span class="wc-lot-chip ${cls}">${chip}</span>`;
       }).join('')}
-      <span style="font-size:.72rem;color:var(--text3);align-self:center;margin-left:2px">Qty: ${piecesDisplay}</span>
     </div>`;
 
   return `<div class="wc-catalog-item-group" data-ref="${esc(catalogItem.ref)}" data-jiidx="${jiIdx}" id="wc-item-${jiIdx}">
@@ -1184,40 +1193,35 @@ function renderWCItemGroupCard(ji, jiIdx) {
       <div class="wc-catalog-item-title">
         <span class="wc-catalog-item-name">${esc(catalogItem.name || catalogItem.ref)}</span>
         ${expiryBadge}
-        ${normBadgeCls ? `<span class="norm-badge ${normBadgeCls}">${esc(normLabel)}</span>` : ''}
       </div>
       <div class="wc-catalog-item-details">
         <span class="wc-catalog-item-ref">REF: ${esc(catalogItem.ref)}</span>
         ${normDisplay ? `<span class="wc-catalog-norm">${esc(normDisplay)}</span>` : ''}
+        <span class="wc-catalog-norm" style="color:var(--text3)">${esc(systemDisplay)}</span>
       </div>
     </div>
     ${lotsSection}
-    <div class="wc-status-row">
-      <button type="button" class="wc-btn-status" data-jiidx="${jiIdx}" data-choice="ok">&#10003; OK</button>
-      <button type="button" class="wc-btn-status" data-jiidx="${jiIdx}" data-choice="low">&#8595; Low</button>
-      <button type="button" class="wc-btn-status" data-jiidx="${jiIdx}" data-choice="out">&#10007; Out</button>
+    <div class="wc-count-row">
+      <span class="wc-count-label">Counted qty</span>
+      <input type="number" id="wc-count-input-${jiIdx}" class="wc-count-input" min="0" step="1" inputmode="numeric" placeholder="0">
+      <span class="wc-count-unit">${esc(unit)}</span>
+      <span class="wc-count-preview hidden" id="wc-count-preview-${jiIdx}"></span>
     </div>
-    <div class="wc-notes-field hidden" id="wc-notes-${jiIdx}">
-      <input type="text" id="wc-notes-input-${jiIdx}" placeholder="Optional note" autocomplete="off">
+    <div class="wc-notes-field" id="wc-notes-${jiIdx}">
+      <input type="text" id="wc-notes-input-${jiIdx}" placeholder="Integrity note (optional)" autocomplete="off">
     </div>
   </div>`;
 }
 
 function wireWCGroupCard(jiIdx) {
-  document.querySelectorAll(`.wc-btn-status[data-jiidx="${jiIdx}"]`).forEach(btn => {
-    btn.addEventListener('click', () => {
-      const choice = btn.dataset.choice;
-      state.weeklyCheck.decisions[jiIdx].status = choice;
-      document.querySelectorAll(`.wc-btn-status[data-jiidx="${jiIdx}"]`).forEach(b =>
-        b.classList.remove('selected-ok', 'selected-low', 'selected-out')
-      );
-      btn.classList.add('selected-' + choice);
-      const notesEl = document.getElementById('wc-notes-' + jiIdx);
-      if (choice === 'low' || choice === 'out') notesEl.classList.remove('hidden');
-      else notesEl.classList.add('hidden');
+  const countInput = document.getElementById('wc-count-input-' + jiIdx);
+  if (countInput) {
+    countInput.addEventListener('input', e => {
+      const raw = e.target.value.trim();
+      state.weeklyCheck.decisions[jiIdx].countedQty = raw === '' ? null : Math.max(0, Number(raw));
       updateWCGroupDone(jiIdx);
     });
-  });
+  }
 
   const notesInput = document.getElementById('wc-notes-input-' + jiIdx);
   if (notesInput) {
@@ -1228,10 +1232,36 @@ function wireWCGroupCard(jiIdx) {
 }
 
 function updateWCGroupDone(jiIdx) {
-  const dec = state.weeklyCheck.decisions[jiIdx];
-  dec.done  = dec.status !== null;
-  const el  = document.getElementById('wc-item-' + jiIdx);
-  if (el) el.classList.toggle('done', dec.done);
+  const ji     = state.weeklyCheck.joined[jiIdx];
+  const dec    = state.weeklyCheck.decisions[jiIdx];
+  const status = deriveWCStatus(dec.countedQty, ji);
+  dec.done = dec.countedQty !== null;
+
+  const el = document.getElementById('wc-item-' + jiIdx);
+  if (el) {
+    el.classList.toggle('done',         dec.done);
+    el.classList.toggle('wc-status-ok',  status === 'ok');
+    el.classList.toggle('wc-status-low', status === 'low');
+    el.classList.toggle('wc-status-out', status === 'out');
+  }
+
+  const previewEl = document.getElementById('wc-count-preview-' + jiIdx);
+  if (previewEl) {
+    if (!dec.done || status === 'ok') {
+      previewEl.classList.add('hidden');
+      previewEl.textContent = '';
+    } else {
+      const orderQty = Math.max(0, (ji.catalogItem.norm || 0) - (dec.countedQty || 0));
+      const unit     = ji.catalogItem.orderingUnit || 'units';
+      if (orderQty > 0) {
+        previewEl.textContent = `Order ${orderQty} ${unit}`;
+        previewEl.className   = `wc-count-preview ${status === 'out' ? 'preview-out' : 'preview-low'}`;
+      } else {
+        previewEl.classList.add('hidden');
+      }
+    }
+  }
+
   updateWCProgress();
 }
 
@@ -1251,9 +1281,10 @@ async function submitWeeklyCheck() {
 
   // Auto-retire "Do Not Order" items confirmed as Out
   for (let jiIdx = 0; jiIdx < joined.length; jiIdx++) {
-    const ji  = joined[jiIdx];
-    const dec = decisions[jiIdx];
-    if (dec.status === 'out' && ji.catalogItem.orderType === 'Do Not Order' && !ji.catalogItem.retired) {
+    const ji     = joined[jiIdx];
+    const dec    = decisions[jiIdx];
+    const status = deriveWCStatus(dec.countedQty, ji);
+    if (status === 'out' && ji.catalogItem.orderType === 'Do Not Order' && !ji.catalogItem.retired) {
       const r = await api.post('setRetired', { ref: ji.catalogItem.ref, retired: true });
       if (r.success) ji.catalogItem.retired = true;
     }
@@ -1261,15 +1292,15 @@ async function submitWeeklyCheck() {
 
   // Log one row per catalog item to Check History
   const historyRows = joined.map((ji, jiIdx) => {
-    const dec    = decisions[jiIdx];
-    const status = dec.status === 'out' ? 'Out of Stock' : dec.status === 'low' ? 'Low Stock' : 'OK';
+    const dec = decisions[jiIdx];
+    const ppu = ji.catalogItem.piecesPerUnit || 1;
     return {
       gtin:            ji.catalogItem.ref,
       name:            ji.catalogItem.name || ji.catalogItem.ref,
       location:        ji.catalogItem.location || '',
-      qty:             ji.totalPieces,
-      integrityStatus: 'OK',
-      notes:           dec.notes || (dec.status !== 'ok' ? status : '')
+      qty:             (dec.countedQty ?? 0) * ppu,
+      integrityStatus: dec.notes ? 'Flagged' : 'OK',
+      notes:           dec.notes || ''
     };
   });
 
@@ -1288,36 +1319,46 @@ function renderWCSummary(joined, decisions) {
   const timeStr   = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const dateStr   = new Date().toLocaleDateString('en-GB');
 
-  const okCount  = decisions.filter(d => d.status === 'ok').length;
-  const lowCount = decisions.filter(d => d.status === 'low').length;
-  const outCount = decisions.filter(d => d.status === 'out').length;
+  const okCount  = decisions.filter((d, i) => deriveWCStatus(d.countedQty, joined[i]) === 'ok').length;
+  const lowCount = decisions.filter((d, i) => deriveWCStatus(d.countedQty, joined[i]) === 'low').length;
+  const outCount = decisions.filter((d, i) => deriveWCStatus(d.countedQty, joined[i]) === 'out').length;
 
   // Group items needing action by order type (exclude Do Not Order — no ordering action needed)
   const actionGroups = {};
   joined.forEach((ji, jiIdx) => {
-    const dec = decisions[jiIdx];
-    if (dec.status === 'ok') return;
+    const dec    = decisions[jiIdx];
+    const status = deriveWCStatus(dec.countedQty, ji);
+    if (status === 'ok') return;
     const ot = ji.catalogItem.orderType || 'Other';
     if (ot === 'Do Not Order') return;
     if (!actionGroups[ot]) actionGroups[ot] = [];
-    actionGroups[ot].push({ ji, dec });
+    actionGroups[ot].push({ ji, dec, status });
   });
 
   const copyDataMap = {};
   function orderSectionHtml(ot, items) {
     const key  = ot.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-    const text = `${ot} — ${dateStr}\n\n` + items.map(({ ji, dec }) =>
-      `- ${ji.catalogItem.name || ji.catalogItem.ref} (REF: ${ji.catalogItem.ref}): ${dec.status === 'out' ? 'OUT' : 'LOW'}${dec.notes ? ' — ' + dec.notes : ''}`
-    ).join('\n');
+    const text = `${ot} — ${dateStr}\n\n` + items.map(({ ji, dec, status }) => {
+      const unit     = ji.catalogItem.orderingUnit || 'units';
+      const orderQty = Math.max(0, (ji.catalogItem.norm || 0) - (dec.countedQty || 0));
+      const orderStr = orderQty > 0 ? ` — ORDER ${orderQty} ${unit.toUpperCase()}` : '';
+      const countStr = dec.countedQty !== null ? `, counted ${dec.countedQty}` : '';
+      return `- ${ji.catalogItem.name || ji.catalogItem.ref} (REF: ${ji.catalogItem.ref}): ${status === 'out' ? 'OUT' : 'LOW'}${countStr}${orderStr}${dec.notes ? ' [' + dec.notes + ']' : ''}`;
+    }).join('\n');
     copyDataMap[key] = text;
     return `<div class="wc-summary-section wc-order-section">
       <div class="wc-summary-section-title">${esc(ot)}</div>
-      <div style="padding:0 16px 4px">${items.map(({ ji, dec }) => {
-        const statusBadge = dec.status === 'out'
+      <div style="padding:0 16px 4px">${items.map(({ ji, dec, status }) => {
+        const unit     = ji.catalogItem.orderingUnit || 'units';
+        const orderQty = Math.max(0, (ji.catalogItem.norm || 0) - (dec.countedQty || 0));
+        const statusBadge = status === 'out'
           ? '<span class="badge badge-expired" style="font-size:.6rem">OUT</span>'
           : '<span class="badge badge-expiring" style="font-size:.6rem">LOW</span>';
+        const orderBadge = orderQty > 0
+          ? `<span class="wc-order-qty-badge">${esc('Order ' + orderQty + ' ' + unit)}</span>`
+          : '';
         return `<div class="wc-order-item">
-          <div class="wc-order-item-name">${esc(ji.catalogItem.name || ji.catalogItem.ref)} ${statusBadge}</div>
+          <div class="wc-order-item-name">${esc(ji.catalogItem.name || ji.catalogItem.ref)} ${statusBadge} ${orderBadge}</div>
           <div class="wc-order-item-detail">REF: ${esc(ji.catalogItem.ref)}${dec.notes ? ' &mdash; ' + esc(dec.notes) : ''}</div>
         </div>`;
       }).join('')}</div>

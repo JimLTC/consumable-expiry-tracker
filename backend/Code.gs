@@ -137,6 +137,8 @@ function doPost(e) {
       result = setCountOnly(params);
     } else if (action === 'setCountedQty') {
       result = setCountedQty(params);
+    } else if (action === 'applyWeeklyCounts') {
+      result = applyWeeklyCounts(params);
     } else {
       result = { success: false, error: 'Unknown action: ' + action };
     }
@@ -575,6 +577,125 @@ function setCountedQty(params) {
     }
 
     return { success: true, systemQty: systemQty, newQty: qty, variance: variance };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * Batch-apply Weekly Check counts to Active Inventory — the physical count
+ * becomes the item's quantity. One call handles all items in a check.
+ *
+ * Per item (qty in pieces):
+ *  - count == system            → no change, no log
+ *  - count-only catalog item    → absolute set (first row = qty, others zeroed,
+ *                                 lotless row created if none)
+ *  - deficit (count < system)   → FEFO: drain earliest-expiring lots first
+ *  - surplus (count > system)   → added to the latest-expiring lot
+ *                                 (lotless row created if the item has no rows)
+ * Every applied change is logged to the Reconciliation Log.
+ */
+function applyWeeklyCounts(params) {
+  const checkedBy = String(params.checkedBy || '').trim();
+  const items     = params.items || [];
+  if (items.length === 0) return { success: true, applied: 0, results: [] };
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return { success: false, error: 'Server busy — please try again' };
+
+  try {
+    const activeSheet = getSheet(ACTIVE_SHEET);
+    const reconSheet  = getSheet(RECON_SHEET);
+    const now         = new Date();
+
+    // One read of both sheets up front
+    const invValues = activeSheet.getDataRange().getValues();
+    const catValues = getSheet(CATALOG_SHEET).getDataRange().getValues();
+    const catByRef  = new Map();
+    for (let i = 1; i < catValues.length; i++) {
+      const ref = String(catValues[i][CC.REF] || '').trim();
+      if (ref) catByRef.set(ref, catValues[i]);
+    }
+
+    const rowsByRef = new Map();
+    for (let i = 1; i < invValues.length; i++) {
+      const g = String(invValues[i][C.GTIN] || '').trim();
+      if (!g) continue;
+      if (!rowsByRef.has(g)) rowsByRef.set(g, []);
+      rowsByRef.get(g).push({
+        rowNum: i + 1,
+        qty:    Number(invValues[i][C.QTY]) || 0,
+        expiry: normalizeDate(invValues[i][C.EXPIRY])
+      });
+    }
+
+    const reconRows = [];
+    const results   = [];
+
+    items.forEach(item => {
+      const gtin = String(item.gtin || '').trim();
+      const qty  = Number(item.qty);
+      if (!gtin || isNaN(qty) || qty < 0) return;
+
+      const rows      = rowsByRef.get(gtin) || [];
+      const systemQty = rows.reduce((s, r) => s + r.qty, 0);
+      if (qty === systemQty) return;
+
+      const catRow    = catByRef.get(gtin);
+      const countOnly = catRow && String(catRow[CC.COUNT_ONLY] || '').trim().toLowerCase() === 'yes';
+      const name      = catRow ? String(catRow[CC.NAME]     || '').trim() : '';
+      const location  = catRow ? String(catRow[CC.LOCATION] || '').trim() : '';
+
+      function setRowQty(r, newQty) {
+        activeSheet.getRange(r.rowNum, C.QTY + 1).setValue(newQty);
+        activeSheet.getRange(r.rowNum, C.LAST_UPDATED + 1).setValue(now);
+        if (checkedBy) activeSheet.getRange(r.rowNum, C.ACTION_BY + 1).setValue(checkedBy);
+        r.qty = newQty;
+      }
+
+      if (rows.length === 0) {
+        // No inventory record — create a lotless row carrying the count
+        activeSheet.appendRow([gtin, '', '', qty, name, now, now, checkedBy, location, 'Piece', '']);
+      } else if (countOnly) {
+        setRowQty(rows[0], qty);
+        for (let k = 1; k < rows.length; k++) setRowQty(rows[k], 0);
+      } else if (qty < systemQty) {
+        // Deficit: assume FEFO usage — drain earliest-expiring lots first
+        const sorted = rows.slice().sort((a, b) => {
+          if (!a.expiry && !b.expiry) return 0;
+          if (!a.expiry) return 1;
+          if (!b.expiry) return -1;
+          return a.expiry.localeCompare(b.expiry);
+        });
+        let deficit = systemQty - qty;
+        for (const r of sorted) {
+          if (deficit <= 0) break;
+          const take = Math.min(r.qty, deficit);
+          if (take > 0) { setRowQty(r, r.qty - take); deficit -= take; }
+        }
+      } else {
+        // Surplus: newest stock usually expires last — top up the latest-expiring lot
+        let target = rows[0];
+        for (const r of rows) {
+          if ((r.expiry || '') > (target.expiry || '')) target = r;
+        }
+        setRowQty(target, target.qty + (qty - systemQty));
+      }
+
+      reconRows.push([
+        now, gtin, '', '',
+        systemQty, qty, qty - systemQty,
+        'Weekly check count', checkedBy,
+        'OK', location
+      ]);
+      results.push({ gtin: gtin, systemQty: systemQty, newQty: qty, variance: qty - systemQty });
+    });
+
+    if (reconRows.length > 0) {
+      reconSheet.getRange(reconSheet.getLastRow() + 1, 1, reconRows.length, 11).setValues(reconRows);
+    }
+
+    return { success: true, applied: results.length, results: results };
   } finally {
     lock.releaseLock();
   }

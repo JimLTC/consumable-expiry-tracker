@@ -1332,7 +1332,7 @@ async function submitWeeklyCheck() {
   const btn = document.getElementById('btn-wc-finish');
   setLoading(btn, 'Finishing…');
 
-  // Auto-retire "Do Not Order" items confirmed as Out; sync count-only items
+  // Auto-retire "Do Not Order" items confirmed as Out
   for (let jiIdx = 0; jiIdx < joined.length; jiIdx++) {
     const ji     = joined[jiIdx];
     const dec    = decisions[jiIdx];
@@ -1341,14 +1341,30 @@ async function submitWeeklyCheck() {
       const r = await api.post('setRetired', { ref: ji.catalogItem.ref, retired: true });
       if (r.success) ji.catalogItem.retired = true;
     }
-    // Count-only (SCM-managed) items: the counted total becomes the inventory qty
-    if (ji.catalogItem.countOnly && dec.countedQty !== null) {
-      await api.post('setCountedQty', {
-        gtin:      ji.catalogItem.ref,
-        qty:       wcCountedPieces(dec, ji) ?? 0,
-        checkedBy: checkedBy || 'Unknown'
-      });
+  }
+
+  // The physical count is the source of truth: sync every counted item's
+  // quantity to Active Inventory in one batch call
+  const countItems = [];
+  joined.forEach((ji, jiIdx) => {
+    const dec = decisions[jiIdx];
+    if (dec.countedQty !== null) {
+      countItems.push({ gtin: ji.catalogItem.ref, qty: wcCountedPieces(dec, ji) ?? 0 });
     }
+  });
+  let appliedCount = null; // null = sync failed
+  if (countItems.length > 0) {
+    const syncResult = await api.post('applyWeeklyCounts', {
+      checkedBy: checkedBy || 'Unknown',
+      items:     countItems
+    });
+    if (syncResult.success) {
+      appliedCount = syncResult.applied || 0;
+    } else {
+      showToast('Inventory sync failed: ' + syncResult.error, 'error');
+    }
+  } else {
+    appliedCount = 0;
   }
 
   // Log one row per catalog item to Check History
@@ -1371,10 +1387,10 @@ async function submitWeeklyCheck() {
     return;
   }
 
-  renderWCSummary(joined, decisions);
+  renderWCSummary(joined, decisions, appliedCount);
 }
 
-function renderWCSummary(joined, decisions) {
+function renderWCSummary(joined, decisions, appliedCount) {
   const container = document.getElementById('wc-container');
   const timeStr   = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const dateStr   = new Date().toLocaleDateString('en-GB');
@@ -1433,8 +1449,15 @@ function renderWCSummary(joined, decisions) {
     ? orderEntries.map(([ot, items]) => orderSectionHtml(ot, items)).join('')
     : `<div class="wc-summary-section"><div class="wc-summary-section-title" style="color:var(--green)">&#10003; No ordering action required</div></div>`;
 
+  const syncNote = appliedCount === null
+    ? '<div class="wc-sync-note wc-sync-failed">&#9888; Inventory sync failed &mdash; Dashboard quantities NOT updated. Note the counts and retry later.</div>'
+    : appliedCount === 0
+      ? '<div class="wc-sync-note">Inventory already matched your counts &mdash; no adjustments needed.</div>'
+      : `<div class="wc-sync-note">&#10003; Inventory updated &mdash; ${appliedCount} item${appliedCount === 1 ? '' : 's'} adjusted to the counted quantity.</div>`;
+
   container.innerHTML = `<div class="wc-summary">
     <div class="wc-summary-title">Check Complete &mdash; ${esc(timeStr)}</div>
+    ${syncNote}
     <div class="wc-summary-stats">
       <div class="wc-stat wc-stat-ok"><span class="wc-stat-num">${okCount}</span><span class="wc-stat-lbl">All OK</span></div>
       <div class="wc-stat ${lowCount > 0 ? 'wc-stat-warn' : 'wc-stat-ok'}"><span class="wc-stat-num">${lowCount}</span><span class="wc-stat-lbl">Low Stock</span></div>
@@ -1518,12 +1541,15 @@ function renderHistoryList() {
 
   const sessions = Array.from(sessionMap.values());
 
+  const chevron = `<svg class="wc-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>`;
+
   const listHtml = sessions.length === 0
     ? '<p class="no-items">No check history found.</p>'
-    : sessions.map(session => {
+    : sessions.map((session, idx) => {
         const dateStr = session.timestamp
           ? new Date(session.timestamp.replace(' ', 'T')).toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })
           : 'Unknown date';
+        const flaggedCount = session.rows.filter(r => (r.integrityStatus || '').toLowerCase() === 'flagged').length;
         const itemRows = session.rows.map(r => {
           const isFlagged = (r.integrityStatus || '').toLowerCase() === 'flagged';
           return `<div class="hist-item-row${isFlagged ? ' hist-item-flagged' : ''}">
@@ -1532,17 +1558,23 @@ function renderHistoryList() {
             ${r.notes ? `<span class="hist-item-note">${esc(r.notes)}</span>` : ''}
           </div>`;
         }).join('');
-        return `<div class="hist-session">
+        return `<div class="hist-session${idx === 0 ? ' open' : ''}">
           <div class="hist-session-header">
             <span class="hist-session-date">${esc(dateStr)}</span>
             <span class="hist-session-by">by ${esc(session.checkedBy || 'Unknown')}</span>
+            ${flaggedCount > 0 ? `<span class="badge badge-expired" style="font-size:.58rem">${flaggedCount} flagged</span>` : ''}
             <span class="hist-session-count">${session.rows.length} item${session.rows.length === 1 ? '' : 's'}</span>
+            ${chevron}
           </div>
           <div class="hist-session-items">${itemRows}</div>
         </div>`;
       }).join('');
 
   container.innerHTML = filterHtml + listHtml;
+
+  container.querySelectorAll('.hist-session-header').forEach(header => {
+    header.addEventListener('click', () => header.closest('.hist-session').classList.toggle('open'));
+  });
 
   document.getElementById('hist-filter-loc').value = filters.location;
   document.getElementById('hist-filter-loc').addEventListener('change', e => {

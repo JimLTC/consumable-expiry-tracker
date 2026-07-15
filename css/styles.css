@@ -1341,6 +1341,23 @@ main {
   color: var(--text);
 }
 
+.wc-sync-note {
+  font-family: var(--heading);
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--green);
+  background: var(--green-bg);
+  border: 1.5px solid var(--green-b);
+  border-radius: var(--r);
+  padding: 9px 12px;
+  margin-bottom: 14px;
+}
+.wc-sync-note.wc-sync-failed {
+  color: var(--red);
+  background: var(--red-bg);
+  border-color: var(--red-b);
+}
+
 .wc-summary-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -1563,12 +1580,16 @@ main {
 .hist-session-header {
   padding: 10px 14px;
   background: var(--surface-variant);
-  border-bottom: 1px solid var(--outline-subtle);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px 12px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
+.hist-session-header .wc-chevron { color: var(--text3); flex-shrink: 0; }
+.hist-session.open .hist-session-header { border-bottom: 1px solid var(--outline-subtle); }
+.hist-session.open .hist-session-header .wc-chevron { transform: rotate(180deg); }
 
 .hist-session-date {
   font-family: var(--heading);
@@ -1591,7 +1612,8 @@ main {
   border-radius: 10px;
 }
 
-.hist-session-items { padding: 4px 0; }
+.hist-session-items { display: none; padding: 4px 0; }
+.hist-session.open .hist-session-items { display: block; }
 
 .hist-item-row {
   display: flex;

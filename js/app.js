@@ -1392,8 +1392,8 @@ async function submitWeeklyCheck() {
 
 function renderWCSummary(joined, decisions, appliedCount) {
   const container = document.getElementById('wc-container');
-  const timeStr   = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-  const dateStr   = new Date().toLocaleDateString('en-GB');
+  const timeStr   = new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Singapore' });
+  const dateStr   = new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Singapore' });
 
   const okCount  = decisions.filter((d, i) => deriveWCStatus(wcCountedPieces(d, joined[i]), joined[i]) === 'ok').length;
   const lowCount = decisions.filter((d, i) => deriveWCStatus(wcCountedPieces(d, joined[i]), joined[i]) === 'low').length;
@@ -1600,7 +1600,8 @@ function showToast(msg, type = '') {
   _toastTimer = setTimeout(() => toast.classList.add('hidden'), 3800);
 }
 
-function today() { return new Date().toISOString().slice(0, 10); }
+// All "today" logic uses Singapore time regardless of device timezone
+function today() { return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' }); }
 function daysDiff(dateA, dateB) {
   if (!dateB) return Infinity;
   return Math.round((new Date(dateB) - new Date(dateA)) / 86400000);

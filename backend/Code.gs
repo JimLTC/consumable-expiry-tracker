@@ -18,6 +18,9 @@
 //   "Item Catalog"       "Check History"
 // =====================================================================
 
+// --- Timezone: all timestamps are formatted in Singapore time ---
+const TIMEZONE = 'Asia/Singapore';
+
 // --- Sheet names ---
 const ACTIVE_SHEET   = 'Active Inventory';
 const ARCHIVE_SHEET  = 'Archive';
@@ -882,7 +885,7 @@ function rowToItem(row) {
 function normalizeDate(val) {
   if (!val) return '';
   if (val instanceof Date) {
-    return Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    return Utilities.formatDate(val, TIMEZONE, 'yyyy-MM-dd');
   }
   return String(val).trim();
 }
@@ -890,11 +893,11 @@ function normalizeDate(val) {
 function normalizeDateTime(val) {
   if (!val) return '';
   if (val instanceof Date) {
-    return Utilities.formatDate(val, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+    return Utilities.formatDate(val, TIMEZONE, 'yyyy-MM-dd HH:mm');
   }
   return String(val).trim();
 }
 
 function todayStr() {
-  return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  return Utilities.formatDate(new Date(), TIMEZONE, 'yyyy-MM-dd');
 }
